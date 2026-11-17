@@ -1,0 +1,6 @@
+{
+  "name": "L2ES Vault — Gestor de Personajes e Ítems",
+  "description": "Dashboard oscuro compacto para gestionar cuentas, personajes, almacenes de clan y búsqueda global de ítems de Lineage2.ES mediante Puente IA y respaldo JSON.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
