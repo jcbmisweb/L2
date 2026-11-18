@@ -28,6 +28,10 @@ interface TreeCounts {
   subtreeCount: number;
 }
 
+type TierFilter = 'all' | 'tier2' | 'tier3' | 'tier2_3';
+
+const LEVEL_PRESETS = [20, 40, 52, 61, 76, 80, 85] as const;
+
 export function ProfessionsView({
   characters,
   selectedServer,
@@ -37,6 +41,15 @@ export function ProfessionsView({
   const [onlyOwned, setOnlyOwned] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedFamilyId, setSelectedFamilyId] = useState<string>('all');
+  const [minLevelInput, setMinLevelInput] = useState<string>('');
+  const [tierFilter, setTierFilter] = useState<TierFilter>('all');
+
+  const activeMinLevel = useMemo(() => {
+    const trimmed = minLevelInput.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    return Number.isFinite(num) && num > 0 ? Math.floor(num) : null;
+  }, [minLevelInput]);
 
   const scopedCharacters = useMemo(() => {
     if (selectedServer === 'all') return characters;
@@ -47,6 +60,19 @@ export function ProfessionsView({
     const byNode = new Map<string, ClassOccupancyEntry[]>();
     const byFamily = new Map<string, ClassOccupancyEntry[]>();
     const unmatched: {character: CharacterRecord; reason: string}[] = [];
+
+    const matchesFilters = (
+      tier: ProfessionNode['tier'],
+      level: number | null | undefined
+    ): boolean => {
+      if (activeMinLevel !== null && (level ?? -1) < activeMinLevel) {
+        return false;
+      }
+      if (tierFilter === 'tier2' && tier !== 2) return false;
+      if (tierFilter === 'tier3' && tier !== 3) return false;
+      if (tierFilter === 'tier2_3' && tier < 2) return false;
+      return true;
+    };
 
     const addEntry = (
       familyId: string,
@@ -64,12 +90,14 @@ export function ProfessionsView({
       const mainMatch = matchProfessionNode(mainClass, char.character.race);
 
       if (mainMatch) {
-        addEntry(mainMatch.familyId, mainMatch.nodeId, {
-          character: char,
-          role: 'main',
-          rawClassName: mainClass || mainMatch.nodeName,
-          level: char.character.level,
-        });
+        if (matchesFilters(mainMatch.tier, char.character.level)) {
+          addEntry(mainMatch.familyId, mainMatch.nodeId, {
+            character: char,
+            role: 'main',
+            rawClassName: mainClass || mainMatch.nodeName,
+            level: char.character.level,
+          });
+        }
       } else {
         unmatched.push({
           character: char,
@@ -85,7 +113,7 @@ export function ProfessionsView({
         char.character.subclasses.forEach((sub, idx) => {
           if (!sub.class) return;
           const subMatch = matchProfessionNode(sub.class);
-          if (subMatch) {
+          if (subMatch && matchesFilters(subMatch.tier, sub.level)) {
             addEntry(subMatch.familyId, subMatch.nodeId, {
               character: char,
               role: 'subclass',
@@ -110,7 +138,7 @@ export function ProfessionsView({
     );
 
     return {byNode, byFamily, unmatched};
-  }, [scopedCharacters, includeSubclasses]);
+  }, [scopedCharacters, includeSubclasses, activeMinLevel, tierFilter]);
 
   const computeNodeTreeCounts = useMemo(() => {
     const cache = new Map<string, TreeCounts>();
@@ -158,6 +186,7 @@ export function ProfessionsView({
     node: ProfessionNode,
     qLower: string
   ): boolean => {
+    if (tierFilter === 'tier2' && node.tier === 3) return false;
     if (!qLower) return true;
     if (node.name.toLowerCase().includes(qLower)) return true;
     if (
@@ -189,7 +218,7 @@ export function ProfessionsView({
       if (qLower && !nodeMatchesQuery(fam.root, qLower)) return false;
       return true;
     });
-  }, [selectedFamilyId, onlyOwned, query, occupancy.byFamily]);
+  }, [selectedFamilyId, onlyOwned, query, occupancy.byFamily, tierFilter]);
 
   const handleExportProfessionsCsv = () => {
     const headers = [
@@ -202,6 +231,7 @@ export function ProfessionsView({
     const rows: (string | number)[][] = [];
 
     const walk = (fam: ProfessionFamily, node: ProfessionNode) => {
+      if (tierFilter === 'tier2' && node.tier === 3) return;
       const entries = occupancy.byNode.get(node.id) || [];
       const tierLabel =
         node.tier === 0
@@ -241,6 +271,7 @@ export function ProfessionsView({
     depth: number,
     qLower: string
   ): React.ReactNode => {
+    if (tierFilter === 'tier2' && node.tier === 3) return null;
     const counts = computeNodeTreeCounts.get(node.id) || {
       directCount: 0,
       subtreeCount: 0,
@@ -355,10 +386,14 @@ export function ProfessionsView({
       >
         <div className="px-4 py-3.5">
           <div className="text-xs text-slate-400">
-            {includeSubclasses ? 'Clases contadas (Main + Sub)' : 'Personajes analizados'}
+            {activeMinLevel !== null || tierFilter !== 'all'
+              ? 'Coincidencias filtradas'
+              : includeSubclasses
+              ? 'Clases contadas (Main + Sub)'
+              : 'Personajes analizados'}
           </div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-slate-100">
-            {includeSubclasses
+            {includeSubclasses || activeMinLevel !== null || tierFilter !== 'all'
               ? summaryStats.totalEntries
               : summaryStats.totalCharacters}
           </div>
@@ -442,88 +477,203 @@ export function ProfessionsView({
       </section>
 
       {/* Toolbar */}
-      <section className="bg-[#111827] border border-[#1E293B] rounded-lg p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar profesión (ej. Hierophant, Maestro, Titan) o personaje..."
-            className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md pl-9 pr-9 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              aria-label="Limpiar búsqueda"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-100"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+      <section className="bg-[#111827] border border-[#1E293B] rounded-lg p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar profesión (ej. Hierophant, Maestro, Titan) o personaje..."
+              className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md pl-9 pr-9 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-100"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+              <button
+                type="button"
+                onClick={() => setIncludeSubclasses(false)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  !includeSubclasses
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Solo clase Main
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncludeSubclasses(true)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  includeSubclasses
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Main + Subclases
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+              <button
+                type="button"
+                onClick={() => setOnlyOwned(false)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  !onlyOwned
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Árbol completo
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnlyOwned(true)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  onlyOwned
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Solo activas (&gt;0)
+              </button>
+            </div>
+
+            {selectedFamilyId !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setSelectedFamilyId('all')}
+                className="px-2.5 py-1.5 rounded-md border border-[#1E293B] bg-[#0B0F17] text-xs text-amber-300 hover:border-amber-500/50 whitespace-nowrap shrink-0"
+              >
+                Ver las 11 familias
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
-            <button
-              type="button"
-              onClick={() => setIncludeSubclasses(false)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                !includeSubclasses
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+        {/* Level >= X and Profession Transfer Tier Filters */}
+        <div className="pt-3 border-t border-[#1E293B] flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          {/* Minimum level selector */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label
+              htmlFor="professions-min-level"
+              className="text-slate-400 font-medium whitespace-nowrap"
             >
-              Solo clase Main
-            </button>
-            <button
-              type="button"
-              onClick={() => setIncludeSubclasses(true)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                includeSubclasses
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Main + Subclases
-            </button>
+              Nivel mínimo:
+            </label>
+            <div className="relative flex items-center">
+              <span className="pl-2.5 pr-1 py-1 bg-[#0B0F17] border border-r-0 border-[#1E293B] rounded-l-md font-mono text-slate-400">
+                ≥
+              </span>
+              <input
+                id="professions-min-level"
+                type="number"
+                min={1}
+                max={99}
+                value={minLevelInput}
+                onChange={(e) => setMinLevelInput(e.target.value)}
+                placeholder="X"
+                className="w-16 bg-[#0B0F17] border border-[#1E293B] rounded-r-md px-2 py-1 font-mono text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+              {minLevelInput && (
+                <button
+                  type="button"
+                  onClick={() => setMinLevelInput('')}
+                  title="Quitar filtro de nivel"
+                  className="ml-1.5 p-1 text-slate-400 hover:text-slate-100"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setMinLevelInput('')}
+                className={`px-2 py-1 rounded text-[11px] font-mono transition-colors ${
+                  activeMinLevel === null
+                    ? 'bg-[#1E293B] text-amber-300 font-semibold'
+                    : 'bg-[#0B0F17] border border-[#1E293B] text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Todos
+              </button>
+              {LEVEL_PRESETS.map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() =>
+                    setMinLevelInput((curr) =>
+                      curr === String(lvl) ? '' : String(lvl)
+                    )
+                  }
+                  className={`px-2 py-1 rounded text-[11px] font-mono tabular-nums transition-colors ${
+                    activeMinLevel === lvl
+                      ? 'bg-[#1E293B] text-amber-300 font-semibold border border-amber-500/40'
+                      : 'bg-[#0B0F17] border border-[#1E293B] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {lvl}+
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
-            <button
-              type="button"
-              onClick={() => setOnlyOwned(false)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                !onlyOwned
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Árbol completo
-            </button>
-            <button
-              type="button"
-              onClick={() => setOnlyOwned(true)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                onlyOwned
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Solo activas (&gt;0)
-            </button>
-          </div>
+          {/* Profession transfer stage (2nd change vs 3rd definitive) */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400 font-medium whitespace-nowrap">
+              Cambio de profesión:
+            </span>
+            <div className="flex flex-wrap items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+              {(
+                [
+                  ['all', 'Todas'],
+                  ['tier2', '2º cambio (2ª)'],
+                  ['tier3', 'Definitivo (3ª)'],
+                  ['tier2_3', '2ª + Definitivo'],
+                ] as const
+              ).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setTierFilter(val)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                    tierFilter === val
+                      ? 'bg-[#1E293B] text-amber-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-          {selectedFamilyId !== 'all' && (
-            <button
-              type="button"
-              onClick={() => setSelectedFamilyId('all')}
-              className="px-2.5 py-1.5 rounded-md border border-[#1E293B] bg-[#0B0F17] text-xs text-amber-300 hover:border-amber-500/50 whitespace-nowrap shrink-0"
-            >
-              Ver las 11 familias
-            </button>
-          )}
+            {(activeMinLevel !== null || tierFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMinLevelInput('');
+                  setTierFilter('all');
+                }}
+                className="text-[11px] text-amber-400 hover:underline whitespace-nowrap"
+              >
+                Restablecer
+              </button>
+            )}
+          </div>
         </div>
       </section>
 

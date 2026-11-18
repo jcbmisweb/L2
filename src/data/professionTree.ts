@@ -739,6 +739,7 @@ interface FlatNodeRef {
   familyName: string;
   nodeId: string;
   nodeName: string;
+  tier: ProfessionNode['tier'];
   raceKeywords: string[];
   keys: string[];
 }
@@ -752,6 +753,7 @@ function collectFlatNodes(family: ProfessionFamily, node: ProfessionNode) {
     familyName: family.name,
     nodeId: node.id,
     nodeName: node.name,
+    tier: node.tier,
     raceKeywords: family.raceKeywords,
     keys,
   });
@@ -763,7 +765,12 @@ PROFESSION_FAMILIES.forEach((fam) => collectFlatNodes(fam, fam.root));
 export function matchProfessionNode(
   className: string | null | undefined,
   raceHint?: string | null
-): {familyId: string; nodeId: string; nodeName: string} | null {
+): {
+  familyId: string;
+  nodeId: string;
+  nodeName: string;
+  tier: ProfessionNode['tier'];
+} | null {
   const key = normalizeProfessionKey(className);
   if (!key) return null;
 
@@ -774,6 +781,7 @@ export function matchProfessionNode(
       familyId: candidates[0].familyId,
       nodeId: candidates[0].nodeId,
       nodeName: candidates[0].nodeName,
+      tier: candidates[0].tier,
     };
   }
 
@@ -791,19 +799,43 @@ export function matchProfessionNode(
 
     if (isElf) {
       const match = candidates.find((c) => c.familyId.startsWith('elf_'));
-      if (match) return {familyId: match.familyId, nodeId: match.nodeId, nodeName: match.nodeName};
+      if (match)
+        return {
+          familyId: match.familyId,
+          nodeId: match.nodeId,
+          nodeName: match.nodeName,
+          tier: match.tier,
+        };
     }
     if (isHuman) {
       const match = candidates.find((c) => c.familyId.startsWith('human_'));
-      if (match) return {familyId: match.familyId, nodeId: match.nodeId, nodeName: match.nodeName};
+      if (match)
+        return {
+          familyId: match.familyId,
+          nodeId: match.nodeId,
+          nodeName: match.nodeName,
+          tier: match.tier,
+        };
     }
     if (isDark) {
       const match = candidates.find((c) => c.familyId.startsWith('darkelf_'));
-      if (match) return {familyId: match.familyId, nodeId: match.nodeId, nodeName: match.nodeName};
+      if (match)
+        return {
+          familyId: match.familyId,
+          nodeId: match.nodeId,
+          nodeName: match.nodeName,
+          tier: match.tier,
+        };
     }
     if (isFemale) {
       const match = candidates.find((c) => c.familyId === 'kamael_female');
-      if (match) return {familyId: match.familyId, nodeId: match.nodeId, nodeName: match.nodeName};
+      if (match)
+        return {
+          familyId: match.familyId,
+          nodeId: match.nodeId,
+          nodeName: match.nodeName,
+          tier: match.tier,
+        };
     }
   }
 
@@ -811,6 +843,7 @@ export function matchProfessionNode(
     familyId: candidates[0].familyId,
     nodeId: candidates[0].nodeId,
     nodeName: candidates[0].nodeName,
+    tier: candidates[0].tier,
   };
 }
 
