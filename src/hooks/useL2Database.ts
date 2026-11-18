@@ -26,6 +26,10 @@ import {
   normalizeItemKey,
   saveDatabase,
 } from '../utils/storage';
+import {
+  deduplicateItemEntries,
+  mergeDatabasesByTimestamp,
+} from '../utils/mergeDatabase';
 
 export function useL2Database() {
   const [db, setDb] = useState<L2Database>(() => loadDatabase());
@@ -504,6 +508,45 @@ export function useL2Database() {
     });
   }, []);
 
+  const deleteItemGlobally = useCallback((name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const targetKey = normalizeItemKey(cleanName);
+
+    setDb((prev) => {
+      const now = new Date().toISOString();
+
+      const characters = prev.characters.map((char) => {
+        const filtered = char.items.filter(
+          (it) => normalizeItemKey(it.name) !== targetKey
+        );
+        return filtered.length === char.items.length
+          ? char
+          : {...char, items: filtered, updatedAt: now};
+      });
+
+      const clans = prev.clans.map((clan) => {
+        const filtered = clan.items.filter(
+          (it) => normalizeItemKey(it.name) !== targetKey
+        );
+        return filtered.length === clan.items.length
+          ? clan
+          : {...clan, items: filtered, updatedAt: now};
+      });
+
+      const nextCatalog = {...(prev.itemCatalog || {})};
+      delete nextCatalog[targetKey];
+
+      return {
+        ...prev,
+        characters,
+        clans,
+        itemCatalog: nextCatalog,
+        updatedAt: now,
+      };
+    });
+  }, []);
+
   const bulkUpsertCatalog = useCallback(
     (entries: {name: string; icon: string}[]) => {
       if (entries.length === 0) return;
@@ -669,12 +712,14 @@ export function useL2Database() {
       const now = new Date().toISOString();
 
       const buildItemEntries = (rawItems: Omit<ItemEntry, 'id'>[]): ItemEntry[] =>
-        rawItems.map((it, idx) => ({
-          ...it,
-          id: `item-${Date.now().toString(36)}-${idx}-${Math.random()
-            .toString(36)
-            .slice(2, 6)}`,
-        }));
+        deduplicateItemEntries(
+          rawItems.map((it, idx) => ({
+            ...it,
+            id: `item-${Date.now().toString(36)}-${idx}-${Math.random()
+              .toString(36)
+              .slice(2, 6)}`,
+          }))
+        );
 
       setDb((prev) => {
         const nextChars = [...prev.characters];
@@ -800,44 +845,23 @@ export function useL2Database() {
       if (mode === 'replace') {
         setDb({
           version: 1,
-          characters: incoming.characters || [],
-          clans: incoming.clans || [],
+          characters: (incoming.characters || []).map((c) => ({
+            ...c,
+            items: deduplicateItemEntries(c.items),
+          })),
+          clans: (incoming.clans || []).map((cl) => ({
+            ...cl,
+            items: deduplicateItemEntries(cl.items),
+          })),
           accounts: incoming.accounts || [],
           iconBaseUrl: incoming.iconBaseUrl || DEFAULT_ICON_BASE_URL,
           itemCatalog: incoming.itemCatalog || {},
-          updatedAt: new Date().toISOString(),
+          updatedAt: incoming.updatedAt || new Date().toISOString(),
         });
         return;
       }
 
-      setDb((prev) => {
-        const charMap = new Map<string, CharacterRecord>();
-        prev.characters.forEach((c) => charMap.set(c.id, c));
-        (incoming.characters || []).forEach((c) => charMap.set(c.id, c));
-
-        const clanMap = new Map<string, ClanRecord>();
-        prev.clans.forEach((cl) => clanMap.set(cl.id, cl));
-        (incoming.clans || []).forEach((cl) => clanMap.set(cl.id, cl));
-
-        const accMap = new Map(prev.accounts.map((a) => [a.id, a]));
-        (incoming.accounts || []).forEach((a) => accMap.set(a.id, a));
-
-        const mergedCatalog: Record<string, ItemCatalogEntry> = {
-          ...(prev.itemCatalog || {}),
-          ...(incoming.itemCatalog || {}),
-        };
-
-        return {
-          version: 1,
-          characters: Array.from(charMap.values()),
-          clans: Array.from(clanMap.values()),
-          accounts: Array.from(accMap.values()),
-          iconBaseUrl:
-            incoming.iconBaseUrl || prev.iconBaseUrl || DEFAULT_ICON_BASE_URL,
-          itemCatalog: mergedCatalog,
-          updatedAt: new Date().toISOString(),
-        };
-      });
+      setDb((prev) => mergeDatabasesByTimestamp(prev, incoming));
     },
     []
   );
@@ -866,6 +890,7 @@ export function useL2Database() {
     updateItemSlot,
     upsertCatalogEntry,
     bulkUpsertCatalog,
+    deleteItemGlobally,
     setIconBaseUrl,
     upsertAccount,
     bulkUpsertAccounts,

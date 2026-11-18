@@ -485,16 +485,46 @@ export function exportCatalogCsv(
   db: L2Database,
   separator: CsvSeparator
 ): {csv: string; rowCount: number} {
+  const ownersByKey = new Map<string, Set<string>>();
+
+  db.characters.forEach((char) => {
+    char.items.forEach((it) => {
+      const k = normalizeItemKey(it.name);
+      if (!ownersByKey.has(k)) ownersByKey.set(k, new Set());
+      const loc = LOCATION_LABELS[it.location] || it.location;
+      ownersByKey.get(k)!.add(`${char.character.name} (${loc})`);
+    });
+  });
+
+  db.clans.forEach((clan) => {
+    clan.items.forEach((it) => {
+      const k = normalizeItemKey(it.name);
+      if (!ownersByKey.has(k)) ownersByKey.set(k, new Set());
+      ownersByKey.get(k)!.add(`Clan ${clan.name}`);
+    });
+  });
+
   const entries = Object.values(db.itemCatalog || {}).sort((a, b) =>
     a.name.localeCompare(b.name)
   );
-  const headers = ['Objeto', 'Archivo o ruta de icono', 'URL completa', 'Actualizado'];
-  const rows = entries.map((e) => [
-    e.name,
-    e.icon,
-    resolveItemIconUrl(e.icon, db.iconBaseUrl) || '',
-    e.updatedAt,
-  ]);
+  const headers = [
+    'Objeto',
+    'Archivo o ruta de icono',
+    'URL completa',
+    'Actualizado',
+    'Personajes y ubicaciones',
+  ];
+  const rows = entries.map((e) => {
+    const owners = Array.from(ownersByKey.get(e.key) || []);
+    return [
+      e.name,
+      e.icon,
+      resolveItemIconUrl(e.icon, db.iconBaseUrl) || '',
+      e.updatedAt,
+      owners.slice(0, 6).join(' | ') +
+        (owners.length > 6 ? ` (+${owners.length - 6})` : ''),
+    ];
+  });
   return {
     csv: buildCsv(headers, rows, separator),
     rowCount: rows.length,

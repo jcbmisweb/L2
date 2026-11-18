@@ -53,7 +53,10 @@ export function BackupModal({
       onRestoreBackup(parsed, importMode);
       setFeedback({
         type: 'success',
-        text: `Respaldo cargado (${parsed.characters.length} personajes, ${parsed.clans.length} clanes).`,
+        text:
+          importMode === 'merge'
+            ? `Respaldo fusionado por fecha y hora más reciente (${parsed.characters.length} personajes, ${parsed.clans.length} clanes analizados sin duplicar ítems).`
+            : `Base de datos reemplazada (${parsed.characters.length} personajes, ${parsed.clans.length} clanes).`,
       });
     } catch {
       setFeedback({
@@ -173,7 +176,7 @@ export function BackupModal({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Fusionar con actuales
+                Fusionar (más reciente)
               </button>
               <button
                 type="button"
@@ -187,6 +190,11 @@ export function BackupModal({
                 Reemplazar todo
               </button>
             </div>
+            <p className="text-[11px] text-slate-400">
+              {importMode === 'merge'
+                ? 'Al fusionar se compara la fecha y hora de actualización de cada personaje, clan, cuenta e icono: siempre gana la versión más reciente sin duplicar ítems ni sumar cantidades.'
+                : 'Reemplaza por completo la base de datos local con el contenido del archivo seleccionado.'}
+            </p>
 
             <div>
               <input

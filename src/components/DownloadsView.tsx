@@ -233,7 +233,7 @@ export function DownloadsView({
       const catalogCount = Object.keys(parsed.itemCatalog || {}).length;
       setFeedback({
         type: 'success',
-        text: `Fusionado "${file.name}": ${parsed.characters.length} personajes, ${parsed.clans.length} clanes y ${catalogCount} iconos.`,
+        text: `Fusionado "${file.name}" tomando la última fecha y hora de actualización sin duplicar ítems (${parsed.characters.length} personajes, ${parsed.clans.length} clanes y ${catalogCount} iconos evaluados).`,
       });
     } catch {
       setFeedback({

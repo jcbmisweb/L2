@@ -11,6 +11,7 @@ import {
   RawCapturePayload,
   SubclassInfo,
 } from '../types/l2';
+import {deduplicateItemEntries} from './mergeDatabase';
 
 const VALID_LOCATIONS = new Set<ItemLocation>([
   'equipped',
@@ -488,7 +489,7 @@ export function applyImportPreviews(
         id: preview.targetId,
         server: preview.server,
         name: preview.clanName,
-        items: preview.normalizedItems,
+        items: deduplicateItemEntries(preview.normalizedItems),
         updatedAt: now,
       };
       if (existingIdx === -1) {
@@ -505,11 +506,11 @@ export function applyImportPreviews(
     const existingIdx = characters.findIndex((c) => c.id === preview.targetId);
     const existing = existingIdx !== -1 ? characters[existingIdx] : null;
 
-    let finalItems = preview.normalizedItems;
+    let finalItems = deduplicateItemEntries(preview.normalizedItems);
     if (existing && mergeMode === 'merge_locations' && preview.locationsPresent.length > 0) {
       const incomingLocs = new Set(preview.locationsPresent);
       const preserved = existing.items.filter((it) => !incomingLocs.has(it.location));
-      finalItems = [...preserved, ...preview.normalizedItems];
+      finalItems = deduplicateItemEntries([...preserved, ...preview.normalizedItems]);
     }
 
     const resolvedClan =

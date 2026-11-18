@@ -4,13 +4,17 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Shield,
   Trash2,
+  User,
   X,
 } from 'lucide-react';
 import {useMemo, useState} from 'react';
-import {L2Database} from '../types/l2';
+import {ItemLocation, L2Database} from '../types/l2';
 import {
   DEFAULT_ICON_BASE_URL,
+  LOCATION_LABELS,
+  formatInt,
   normalizeIconInput,
   normalizeItemKey,
 } from '../utils/storage';
@@ -20,21 +24,38 @@ interface ItemCatalogViewProps {
   db: L2Database;
   onUpsertCatalogEntry: (name: string, rawIcon: string) => void;
   onBulkUpsertCatalog: (entries: {name: string; icon: string}[]) => void;
+  onDeleteItemGlobally: (name: string) => void;
   onSetIconBaseUrl: (url: string) => void;
+  onSelectCharacter?: (id: string) => void;
+  onSelectClan?: (id: string) => void;
+}
+
+interface ItemOwnerLocation {
+  type: 'character' | 'clan';
+  id: string;
+  name: string;
+  account?: string;
+  server: string;
+  locations: ItemLocation[];
+  totalQty: number;
+  hasQty: boolean;
 }
 
 interface MergedCatalogRow {
   key: string;
   name: string;
   icon: string;
-  owners: string[];
+  owners: ItemOwnerLocation[];
 }
 
 export function ItemCatalogView({
   db,
   onUpsertCatalogEntry,
   onBulkUpsertCatalog,
+  onDeleteItemGlobally,
   onSetIconBaseUrl,
+  onSelectCharacter,
+  onSelectClan,
 }: ItemCatalogViewProps) {
   const [query, setQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'linked'>('all');
@@ -53,15 +74,23 @@ export function ItemCatalogView({
   const [bulkText, setBulkText] = useState('');
   const [bulkResultMsg, setBulkResultMsg] = useState<string | null>(null);
 
-  // Per-row inline draft values
+  // Per-row inline draft values, expanded owner lists, and delete confirmation
   const [draftIcons, setDraftIcons] = useState<Record<string, string>>({});
   const [justSavedKey, setJustSavedKey] = useState<string | null>(null);
+  const [expandedOwners, setExpandedOwners] = useState<Record<string, boolean>>({});
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
 
   const mergedRows = useMemo<MergedCatalogRow[]>(() => {
     const map = new Map<string, MergedCatalogRow>();
-    const ownerSets = new Map<string, Set<string>>();
+    const ownerMaps = new Map<string, Map<string, ItemOwnerLocation>>();
 
-    const addUsage = (itemName: string, ownerLabel: string) => {
+    const addUsage = (
+      itemName: string,
+      ownerKey: string,
+      ownerMeta: Omit<ItemOwnerLocation, 'locations' | 'totalQty' | 'hasQty'>,
+      location: ItemLocation,
+      quantity: number | null
+    ) => {
       const cleanName = itemName.trim();
       if (!cleanName) return;
       const key = normalizeItemKey(cleanName);
@@ -73,17 +102,60 @@ export function ItemCatalogView({
           icon: cat?.icon || '',
           owners: [],
         });
-        ownerSets.set(key, new Set());
+        ownerMaps.set(key, new Map());
       }
-      ownerSets.get(key)!.add(ownerLabel);
+      const perItemOwners = ownerMaps.get(key)!;
+      if (!perItemOwners.has(ownerKey)) {
+        perItemOwners.set(ownerKey, {
+          ...ownerMeta,
+          locations: [],
+          totalQty: 0,
+          hasQty: false,
+        });
+      }
+      const owner = perItemOwners.get(ownerKey)!;
+      if (!owner.locations.includes(location)) {
+        owner.locations.push(location);
+      }
+      if (typeof quantity === 'number' && Number.isFinite(quantity)) {
+        owner.totalQty += quantity;
+        owner.hasQty = true;
+      }
     };
 
     db.characters.forEach((char) => {
-      char.items.forEach((item) => addUsage(item.name, char.character.name));
+      char.items.forEach((item) =>
+        addUsage(
+          item.name,
+          `char::${char.id}`,
+          {
+            type: 'character',
+            id: char.id,
+            name: char.character.name,
+            account: char.account,
+            server: char.server,
+          },
+          item.location,
+          item.quantity
+        )
+      );
     });
 
     db.clans.forEach((clan) => {
-      clan.items.forEach((item) => addUsage(item.name, `Clan ${clan.name}`));
+      clan.items.forEach((item) =>
+        addUsage(
+          item.name,
+          `clan::${clan.id}`,
+          {
+            type: 'clan',
+            id: clan.id,
+            name: clan.name,
+            server: clan.server,
+          },
+          item.location,
+          item.quantity
+        )
+      );
     });
 
     Object.values(db.itemCatalog || {}).forEach((entry) => {
@@ -94,7 +166,7 @@ export function ItemCatalogView({
           icon: entry.icon,
           owners: [],
         });
-        ownerSets.set(entry.key, new Set());
+        ownerMaps.set(entry.key, new Map());
       } else {
         const existing = map.get(entry.key)!;
         existing.icon = entry.icon;
@@ -102,7 +174,13 @@ export function ItemCatalogView({
     });
 
     map.forEach((row, key) => {
-      row.owners = Array.from(ownerSets.get(key) || []);
+      const ownersList = Array.from(ownerMaps.get(key)?.values() || []).sort(
+        (a, b) => {
+          if (a.type !== b.type) return a.type === 'character' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        }
+      );
+      row.owners = ownersList;
     });
 
     return Array.from(map.values()).sort((a, b) => {
@@ -124,7 +202,15 @@ export function ItemCatalogView({
       if (filterMode === 'linked' && !row.icon) return false;
       if (filterMode === 'missing' && Boolean(row.icon)) return false;
       if (q) {
-        const hay = `${row.name} ${row.icon} ${row.owners.join(' ')}`.toLowerCase();
+        const ownerText = row.owners
+          .map(
+            (o) =>
+              `${o.name} ${o.account || ''} ${o.locations
+                .map((l) => LOCATION_LABELS[l] || l)
+                .join(' ')}`
+          )
+          .join(' ');
+        const hay = `${row.name} ${row.icon} ${ownerText}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -380,7 +466,7 @@ export function ItemCatalogView({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar objeto o icono..."
+              placeholder="Buscar objeto, icono o personaje..."
               className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md pl-8 pr-8 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
             />
             {query && (
@@ -453,13 +539,97 @@ export function ItemCatalogView({
                         {row.name}
                       </td>
 
-                      <td className="py-2 px-3 text-slate-400">
-                        {row.owners.length > 0
-                          ? row.owners.slice(0, 3).join(', ') +
-                            (row.owners.length > 3
-                              ? ` +${row.owners.length - 3}`
-                              : '')
-                          : 'Solo catálogo'}
+                      <td className="py-2 px-3 text-slate-300 min-w-[230px]">
+                        {row.owners.length === 0 ? (
+                          <span className="text-slate-500">Solo catálogo</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {(expandedOwners[row.key]
+                              ? row.owners
+                              : row.owners.slice(0, 3)
+                            ).map((owner) => {
+                              const locsText = owner.locations
+                                .map((l) => LOCATION_LABELS[l] || l)
+                                .join(', ');
+                              const tooltip = [
+                                owner.type === 'clan'
+                                  ? `Clan ${owner.name}`
+                                  : owner.name,
+                                owner.account ? `Cuenta: ${owner.account}` : null,
+                                owner.server,
+                                `Sección: ${locsText}`,
+                                owner.hasQty
+                                  ? `Cantidad: ${formatInt(owner.totalQty)}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ');
+
+                              const clickable =
+                                (owner.type === 'character' && onSelectCharacter) ||
+                                (owner.type === 'clan' && onSelectClan);
+
+                              const inner = (
+                                <>
+                                  {owner.type === 'clan' ? (
+                                    <Shield className="w-3 h-3 text-amber-400 shrink-0" />
+                                  ) : (
+                                    <User className="w-3 h-3 text-sky-400 shrink-0" />
+                                  )}
+                                  <span className="font-medium text-slate-100">
+                                    {owner.type === 'clan'
+                                      ? `Clan ${owner.name}`
+                                      : owner.name}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
+                                    ({locsText})
+                                  </span>
+                                </>
+                              );
+
+                              return clickable ? (
+                                <button
+                                  key={`${owner.type}-${owner.id}`}
+                                  type="button"
+                                  title={tooltip}
+                                  onClick={() =>
+                                    owner.type === 'character'
+                                      ? onSelectCharacter?.(owner.id)
+                                      : onSelectClan?.(owner.id)
+                                  }
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0B0F17] hover:bg-[#161F30] border border-[#1E293B] hover:border-amber-500/50 text-[11px] transition-colors whitespace-nowrap"
+                                >
+                                  {inner}
+                                </button>
+                              ) : (
+                                <span
+                                  key={`${owner.type}-${owner.id}`}
+                                  title={tooltip}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0B0F17] border border-[#1E293B] text-[11px] whitespace-nowrap"
+                                >
+                                  {inner}
+                                </span>
+                              );
+                            })}
+
+                            {row.owners.length > 3 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedOwners((prev) => ({
+                                    ...prev,
+                                    [row.key]: !prev[row.key],
+                                  }))
+                                }
+                                className="px-1.5 py-0.5 rounded text-[11px] font-mono text-amber-400 hover:text-amber-300 hover:bg-[#0B0F17] whitespace-nowrap"
+                              >
+                                {expandedOwners[row.key]
+                                  ? 'Ver menos'
+                                  : `+${row.owners.length - 3}`}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-2 px-3 min-w-[260px]">
@@ -484,45 +654,93 @@ export function ItemCatalogView({
                       </td>
 
                       <td className="py-2 pl-3 pr-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-2">
-                          {justSavedKey === row.key ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Guardado</span>
+                        {confirmDeleteKey === row.key ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="text-[11px] text-red-300">
+                              {row.owners.length > 0
+                                ? `¿Borrar de ${row.owners.length} dueño(s)?`
+                                : '¿Borrar ítem?'}
                             </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={!isDirty && Boolean(row.icon)}
-                              onClick={() => handleSaveRow(row)}
-                              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                                isDirty || (!row.icon && currentInput.trim())
-                                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                                  : 'text-slate-500'
-                              }`}
-                            >
-                              Guardar
-                            </button>
-                          )}
-
-                          {row.icon && (
                             <button
                               type="button"
                               onClick={() => {
-                                onUpsertCatalogEntry(row.name, '');
+                                onDeleteItemGlobally(row.name);
+                                setConfirmDeleteKey(null);
                                 setDraftIcons((prev) => {
                                   const next = {...prev};
                                   delete next[row.key];
                                   return next;
                                 });
                               }}
-                              aria-label={`Quitar icono de ${row.name}`}
-                              className="p-1 text-slate-500 hover:text-red-400"
+                              className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-[11px] font-semibold whitespace-nowrap shrink-0"
+                            >
+                              Sí, eliminar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteKey(null)}
+                              className="px-2 py-1 rounded text-[11px] text-slate-400 hover:text-slate-200 whitespace-nowrap shrink-0"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5">
+                            {justSavedKey === row.key ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Guardado</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!isDirty && Boolean(row.icon)}
+                                onClick={() => handleSaveRow(row)}
+                                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                                  isDirty || (!row.icon && currentInput.trim())
+                                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                                    : 'text-slate-500'
+                                }`}
+                              >
+                                Guardar
+                              </button>
+                            )}
+
+                            {row.icon && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onUpsertCatalogEntry(row.name, '');
+                                  setDraftIcons((prev) => {
+                                    const next = {...prev};
+                                    delete next[row.key];
+                                    return next;
+                                  });
+                                }}
+                                title="Quitar solo el enlace de imagen"
+                                aria-label={`Quitar enlace de imagen de ${row.name}`}
+                                className="p-1 text-slate-500 hover:text-amber-300 rounded"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteKey(row.key)}
+                              title={
+                                row.owners.length > 0
+                                  ? 'Eliminar ítem de las cuentas/personajes y del catálogo'
+                                  : 'Eliminar ítem del catálogo'
+                              }
+                              aria-label={`Eliminar ítem ${row.name}`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-colors whitespace-nowrap shrink-0"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
+                              <span>Eliminar</span>
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

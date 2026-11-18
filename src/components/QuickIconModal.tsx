@@ -1,8 +1,9 @@
 import {ExternalLink, Package, Trash2, X} from 'lucide-react';
-import {useEffect, useState} from 'react';
-import {ItemCatalogEntry} from '../types/l2';
+import {useEffect, useMemo, useState} from 'react';
+import {CharacterRecord, ClanRecord, ItemCatalogEntry} from '../types/l2';
 import {
   DEFAULT_ICON_BASE_URL,
+  LOCATION_LABELS,
   normalizeIconInput,
   normalizeItemKey,
   resolveItemIconUrl,
@@ -12,26 +13,60 @@ interface QuickIconModalProps {
   itemName: string | null;
   itemCatalog: Record<string, ItemCatalogEntry>;
   iconBaseUrl: string;
+  characters?: CharacterRecord[];
+  clans?: ClanRecord[];
   onClose: () => void;
   onSave: (name: string, rawIcon: string) => void;
+  onDeleteItemGlobally?: (name: string) => void;
 }
 
 export function QuickIconModal({
   itemName,
   itemCatalog,
   iconBaseUrl,
+  characters = [],
+  clans = [],
   onClose,
   onSave,
+  onDeleteItemGlobally,
 }: QuickIconModalProps) {
   const [iconInput, setIconInput] = useState('');
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!itemName) return;
     const entry = itemCatalog?.[normalizeItemKey(itemName)];
     setIconInput(entry?.icon || '');
     setPreviewFailed(false);
+    setConfirmDelete(false);
   }, [itemName, itemCatalog]);
+
+  const itemOwners = useMemo(() => {
+    if (!itemName) return [];
+    const targetKey = normalizeItemKey(itemName);
+    const list: string[] = [];
+
+    characters.forEach((c) => {
+      const locs = new Set<string>();
+      c.items.forEach((it) => {
+        if (normalizeItemKey(it.name) === targetKey) {
+          locs.add(LOCATION_LABELS[it.location] || it.location);
+        }
+      });
+      if (locs.size > 0) {
+        list.push(`${c.character.name} (${Array.from(locs).join(', ')})`);
+      }
+    });
+
+    clans.forEach((cl) => {
+      if (cl.items.some((it) => normalizeItemKey(it.name) === targetKey)) {
+        list.push(`Clan ${cl.name}`);
+      }
+    });
+
+    return list;
+  }, [itemName, characters, clans]);
 
   if (!itemName) return null;
 
@@ -92,6 +127,12 @@ export function QuickIconModal({
               <div className="font-mono text-[11px] text-slate-400 truncate mt-0.5">
                 {previewUrl || 'Sin imagen asignada'}
               </div>
+              {itemOwners.length > 0 && (
+                <div className="text-[11px] text-sky-300/90 mt-1 leading-snug">
+                  En: {itemOwners.slice(0, 4).join(' · ')}
+                  {itemOwners.length > 4 ? ` (+${itemOwners.length - 4})` : ''}
+                </div>
+              )}
               {previewFailed && previewUrl && (
                 <div className="text-[11px] text-amber-300 mt-0.5">
                   No se pudo cargar esa imagen. Comprueba el nombre o la URL.
@@ -137,20 +178,54 @@ export function QuickIconModal({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#1E293B]">
-            <button
-              type="button"
-              onClick={() => {
-                onSave(itemName, '');
-                onClose();
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-slate-400 hover:text-red-400"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Quitar imagen</span>
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#1E293B]">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onSave(itemName, '');
+                  onClose();
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-slate-400 hover:text-amber-300"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Quitar enlace</span>
+              </button>
 
-            <div className="flex items-center gap-2">
+              {onDeleteItemGlobally &&
+                (!confirmDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-red-400 hover:bg-red-950/40"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar ítem</span>
+                  </button>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDeleteItemGlobally(itemName);
+                        onClose();
+                      }}
+                      className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold"
+                    >
+                      Sí, eliminar todo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="px-2 py-1 rounded text-slate-400 hover:text-slate-200"
+                    >
+                      No
+                    </button>
+                  </div>
+                ))}
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
                 onClick={onClose}

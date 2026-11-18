@@ -31,6 +31,7 @@ export default function App() {
     updateItemSlot,
     upsertCatalogEntry,
     bulkUpsertCatalog,
+    deleteItemGlobally,
     setIconBaseUrl,
     upsertAccount,
     bulkUpsertAccounts,
@@ -212,7 +213,10 @@ export default function App() {
               db={db}
               onUpsertCatalogEntry={upsertCatalogEntry}
               onBulkUpsertCatalog={bulkUpsertCatalog}
+              onDeleteItemGlobally={deleteItemGlobally}
               onSetIconBaseUrl={setIconBaseUrl}
+              onSelectCharacter={handleOpenCharacter}
+              onSelectClan={handleOpenClan}
             />
           ) : activeView === 'accounts' ? (
             <AccountsDirectoryView
@@ -317,8 +321,11 @@ export default function App() {
         itemName={quickIconItemName}
         itemCatalog={db.itemCatalog}
         iconBaseUrl={db.iconBaseUrl}
+        characters={db.characters}
+        clans={db.clans}
         onClose={() => setQuickIconItemName(null)}
         onSave={upsertCatalogEntry}
+        onDeleteItemGlobally={deleteItemGlobally}
       />
 
       <BackupModal
