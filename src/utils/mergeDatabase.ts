@@ -10,6 +10,7 @@ import {
   DEFAULT_ICON_BASE_URL,
   normalizeExactItemKey,
   normalizeItemKey,
+  resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from './storage';
 
@@ -81,9 +82,10 @@ export function deduplicateItemEntries(items: ItemEntry[]): ItemEntry[] {
       .sort()
       .join('|');
     const cleanSlot = raw.slot || null;
+    const resolvedName = resolveItemNameWithGrade(raw.name, cleanTags);
     const normalizedItem: ItemEntry = {
       ...raw,
-      name: raw.name.trim(),
+      name: resolvedName,
       slot: cleanSlot,
       tags: cleanTags,
       quantity:
@@ -368,7 +370,7 @@ export function mergeDatabasesByTimestamp(
     fallbackTs: number
   ) => {
     if (!entry || !entry.name?.trim()) return;
-    const cleanName = stripItemEnchantPrefix(entry.name);
+    const cleanName = resolveItemNameWithGrade(stripItemEnchantPrefix(entry.name));
     if (!cleanName) return;
     const key = normalizeItemKey(cleanName);
     const normalizedEntry: ItemCatalogEntry = {

@@ -8,6 +8,7 @@ import {
   LOCATION_LABELS,
   normalizeItemKey,
   resolveItemIconUrl,
+  resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from './storage';
 
@@ -194,8 +195,14 @@ export function exportItemsGroupedCsv(
     }
   >();
 
-  const addRow = (ownerLabel: string, locLabel: string, name: string, qty: number | null) => {
-    const baseName = stripItemEnchantPrefix(name);
+  const addRow = (
+    ownerLabel: string,
+    locLabel: string,
+    name: string,
+    tags: string[],
+    qty: number | null
+  ) => {
+    const baseName = resolveItemNameWithGrade(stripItemEnchantPrefix(name), tags);
     const key = normalizeItemKey(baseName);
     if (!map.has(key)) {
       map.set(key, {
@@ -221,6 +228,7 @@ export function exportItemsGroupedCsv(
         char.character.name,
         LOCATION_LABELS[it.location] || it.location,
         it.name,
+        it.tags,
         it.quantity
       );
     });
@@ -228,7 +236,7 @@ export function exportItemsGroupedCsv(
 
   filtered.clans.forEach((clan) => {
     clan.items.forEach((it) => {
-      addRow(`Clan ${clan.name}`, 'Almacén de clan', it.name, it.quantity);
+      addRow(`Clan ${clan.name}`, 'Almacén de clan', it.name, it.tags, it.quantity);
     });
   });
 
@@ -1010,23 +1018,26 @@ export function parseItemsFileContent(
           const items = Array.isArray(c.items)
             ? (c.items as Record<string, unknown>[])
                 .filter((it) => typeof it?.name === 'string' && it.name.trim())
-                .map((it) => ({
-                  name: String(it.name).trim(),
-                  quantity:
-                    typeof it.quantity === 'number' && Number.isFinite(it.quantity)
-                      ? it.quantity
-                      : null,
-                  location: mapCsvLocation(String(it.location || 'inventory')),
-                  slot:
-                    typeof it.slot === 'string' &&
-                    VALID_SLOTS.has(it.slot.trim() as EquipmentSlot)
-                      ? (it.slot.trim() as EquipmentSlot)
-                      : null,
-                  tags: Array.isArray(it.tags)
+                .map((it) => {
+                  const tags = Array.isArray(it.tags)
                     ? it.tags.map((t) => String(t).trim()).filter(Boolean)
-                    : [],
-                  uncertain: Boolean(it.uncertain),
-                }))
+                    : [];
+                  return {
+                    name: resolveItemNameWithGrade(String(it.name), tags),
+                    quantity:
+                      typeof it.quantity === 'number' && Number.isFinite(it.quantity)
+                        ? it.quantity
+                        : null,
+                    location: mapCsvLocation(String(it.location || 'inventory')),
+                    slot:
+                      typeof it.slot === 'string' &&
+                      VALID_SLOTS.has(it.slot.trim() as EquipmentSlot)
+                        ? (it.slot.trim() as EquipmentSlot)
+                        : null,
+                    tags,
+                    uncertain: Boolean(it.uncertain),
+                  };
+                })
             : [];
           charBatches.push({server, account, name, items});
         });
@@ -1045,19 +1056,22 @@ export function parseItemsFileContent(
           const items = Array.isArray(cl.items)
             ? (cl.items as Record<string, unknown>[])
                 .filter((it) => typeof it?.name === 'string' && it.name.trim())
-                .map((it) => ({
-                  name: String(it.name).trim(),
-                  quantity:
-                    typeof it.quantity === 'number' && Number.isFinite(it.quantity)
-                      ? it.quantity
-                      : null,
-                  location: 'clan_warehouse' as ItemLocation,
-                  slot: null,
-                  tags: Array.isArray(it.tags)
+                .map((it) => {
+                  const tags = Array.isArray(it.tags)
                     ? it.tags.map((t) => String(t).trim()).filter(Boolean)
-                    : [],
-                  uncertain: Boolean(it.uncertain),
-                }))
+                    : [];
+                  return {
+                    name: resolveItemNameWithGrade(String(it.name), tags),
+                    quantity:
+                      typeof it.quantity === 'number' && Number.isFinite(it.quantity)
+                        ? it.quantity
+                        : null,
+                    location: 'clan_warehouse' as ItemLocation,
+                    slot: null,
+                    tags,
+                    uncertain: Boolean(it.uncertain),
+                  };
+                })
             : [];
           clanBatches.push({server, name, items});
         });
@@ -1149,7 +1163,7 @@ export function parseItemsFileContent(
       }
       if (itemName && itemName !== '(Sin objetos)') {
         clanMap.get(key)!.items.push({
-          name: itemName,
+          name: resolveItemNameWithGrade(itemName, tags),
           quantity,
           location: 'clan_warehouse',
           slot: null,
@@ -1171,7 +1185,7 @@ export function parseItemsFileContent(
         : null;
       const location = mapCsvLocation(idxSection >= 0 ? c[idxSection] || '' : 'inventory');
       charMap.get(key)!.items.push({
-        name: itemName,
+        name: resolveItemNameWithGrade(itemName, tags),
         quantity,
         location,
         slot,

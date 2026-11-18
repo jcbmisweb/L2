@@ -17,6 +17,7 @@ import {
   formatInt,
   normalizeIconInput,
   normalizeItemKey,
+  resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
@@ -87,19 +88,26 @@ export function ItemCatalogView({
 
     const addUsage = (
       itemName: string,
+      tags: string[],
       ownerKey: string,
       ownerMeta: Omit<ItemOwnerLocation, 'locations' | 'totalQty' | 'hasQty'>,
       location: ItemLocation,
       quantity: number | null
     ) => {
-      const cleanName = stripItemEnchantPrefix(itemName);
+      const cleanName = resolveItemNameWithGrade(
+        stripItemEnchantPrefix(itemName),
+        tags
+      );
       if (!cleanName) return;
       const key = normalizeItemKey(cleanName);
       if (!map.has(key)) {
         const cat = db.itemCatalog?.[key];
         map.set(key, {
           key,
-          name: stripItemEnchantPrefix(cat?.name || cleanName),
+          name: resolveItemNameWithGrade(
+            stripItemEnchantPrefix(cat?.name || cleanName),
+            tags
+          ),
           icon: cat?.icon || '',
           owners: [],
         });
@@ -128,6 +136,7 @@ export function ItemCatalogView({
       char.items.forEach((item) =>
         addUsage(
           item.name,
+          item.tags,
           `char::${char.id}`,
           {
             type: 'character',
@@ -146,6 +155,7 @@ export function ItemCatalogView({
       clan.items.forEach((item) =>
         addUsage(
           item.name,
+          item.tags,
           `clan::${clan.id}`,
           {
             type: 'clan',
@@ -160,7 +170,9 @@ export function ItemCatalogView({
     });
 
     Object.values(db.itemCatalog || {}).forEach((entry) => {
-      const cleanEntryName = stripItemEnchantPrefix(entry.name);
+      const cleanEntryName = resolveItemNameWithGrade(
+        stripItemEnchantPrefix(entry.name)
+      );
       if (!cleanEntryName) return;
       const cleanKey = normalizeItemKey(cleanEntryName);
       if (!map.has(cleanKey)) {

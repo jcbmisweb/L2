@@ -6,7 +6,7 @@ REGLAS
 3. Copia los nombres de objetos EXACTAMENTE como aparecen (en inglés, con mayúsculas y signos). No los traduzcas ni los corrijas.
 4. Las cantidades, HP, MP, SP, puntos y horas son números enteros SIN separadores. El punto es separador de miles: "37.209.565.602" -> 37209565602.
 5. Cada fila de una tabla es un elemento propio. Si un mismo objeto sale en varias filas (por ejemplo, 4 cupones iguales de cantidad 1), conserva las filas por separado. No las sumes.
-6. Las etiquetas pequeñas junto al nombre (por ejemplo [S], [C], [S80], "L2ES", "Event") van en el array "tags" del objeto, no dentro de "name".
+6. Las etiquetas pequeñas junto al nombre (por ejemplo [S], [C], [S80], "L2ES", "Event") van en el array "tags" del objeto, no dentro de "name". EXCEPCIÓN IMPORTANTE: cuando el objeto sea un pergamino de encantamiento o recuperación (Blessed Scroll: Enchant Armor/Weapon, Scroll: Enchant Armor/Weapon, Scroll: Recovery), un cristal (Crystal), un Soul Crystal (Red/Blue/Green Soul Crystal), Soulshot/Spiritshot o Elixir que tenga grado o nivel/etapa junto al nombre (por ejemplo [D], [C], [B], [A], [S] o [10], [12], [14]), incluye SIEMPRE ese grado o nivel también en "name" además de en "tags" (ejemplos: "Blessed Scroll: Enchant Armor (A-Grade)", "Scroll: Enchant Armor (S-Grade)", "Crystal (C-Grade)", "Red Soul Crystal - Stage 12").
 7. Si una tabla pone "No hay datos disponibles en la tabla", devuelve ese array vacío [].
 8. Si te paso varias capturas del mismo personaje, únelas en un solo JSON y elimina las filas repetidas que se solapen entre capturas.
 9. NO incluyas el correo electrónico, el nombre real del titular ni las direcciones IP, aunque aparezcan en la imagen.

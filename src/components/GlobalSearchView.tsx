@@ -16,6 +16,7 @@ import {
   formatAdenaShort,
   formatInt,
   normalizeItemKey,
+  resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
@@ -30,7 +31,7 @@ interface GlobalSearchViewProps {
     ownerType: 'character' | 'clan',
     ownerId: string,
     itemId: string,
-    patch: {name?: string; quantity?: number | null; uncertain?: boolean}
+    patch: {name?: string; quantity?: number | null; uncertain?: boolean; tags?: string[]}
   ) => void;
   onQuickEditIcon: (itemName: string) => void;
 }
@@ -75,6 +76,7 @@ export function GlobalSearchView({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editQty, setEditQty] = useState('');
+  const [editTags, setEditTags] = useState('');
 
   // Global stats for current server filter
   const stats = useMemo(() => {
@@ -204,8 +206,9 @@ export function GlobalSearchView({
 
     filteredRows.forEach((row) => {
       const sortedTags = row.item.tags.slice().sort();
-      const baseName = stripItemEnchantPrefix(row.item.name);
-      const key = `${normalizeItemKey(row.item.name)}::${sortedTags.join('|')}`;
+      const resolvedName = resolveItemNameWithGrade(row.item.name, row.item.tags);
+      const baseName = stripItemEnchantPrefix(resolvedName);
+      const key = `${normalizeItemKey(resolvedName)}::${sortedTags.join('|')}`;
       if (!map.has(key)) {
         map.set(key, {
           key,
@@ -248,6 +251,7 @@ export function GlobalSearchView({
     setEditingRowId(row.item.id);
     setEditName(row.item.name);
     setEditQty(row.item.quantity === null ? '' : String(row.item.quantity));
+    setEditTags(row.item.tags.join(', '));
   };
 
   const saveEditRow = (row: FlatItemRow) => {
@@ -256,6 +260,10 @@ export function GlobalSearchView({
     onUpdateItem(row.ownerType, row.ownerId, row.item.id, {
       name: editName.trim() || row.item.name,
       quantity: Number.isFinite(parsedQty) ? parsedQty : null,
+      tags: editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
       uncertain: false,
     });
     setEditingRowId(null);
@@ -552,8 +560,10 @@ export function GlobalSearchView({
                       editingRowId={editingRowId}
                       editName={editName}
                       editQty={editQty}
+                      editTags={editTags}
                       setEditName={setEditName}
                       setEditQty={setEditQty}
+                      setEditTags={setEditTags}
                       onStartEdit={startEditRow}
                       onSaveEdit={saveEditRow}
                       onCancelEdit={() => setEditingRowId(null)}
@@ -588,12 +598,21 @@ export function GlobalSearchView({
                     >
                       <td className="py-2 pl-4 pr-3">
                         {isEditing ? (
-                          <input
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="w-full bg-[#0B0F17] border border-amber-500/60 rounded px-2 py-1 text-xs text-slate-100"
-                          />
+                          <div className="space-y-1.5">
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="w-full bg-[#0B0F17] border border-amber-500/60 rounded px-2 py-1 text-xs text-slate-100"
+                            />
+                            <input
+                              type="text"
+                              value={editTags}
+                              onChange={(e) => setEditTags(e.target.value)}
+                              placeholder="Etiquetas/Grado o Nivel (ej. A, S, C, 12)"
+                              className="w-full bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] font-mono text-amber-300"
+                            />
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2.5">
                             <ItemIcon
@@ -733,8 +752,10 @@ interface FragmentGroupRowProps {
   editingRowId: string | null;
   editName: string;
   editQty: string;
+  editTags: string;
   setEditName: (v: string) => void;
   setEditQty: (v: string) => void;
+  setEditTags: (v: string) => void;
   onStartEdit: (row: FlatItemRow) => void;
   onSaveEdit: (row: FlatItemRow) => void;
   onCancelEdit: () => void;
@@ -753,8 +774,10 @@ function FragmentGroupRow({
   editingRowId,
   editName,
   editQty,
+  editTags,
   setEditName,
   setEditQty,
+  setEditTags,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -891,13 +914,24 @@ function FragmentGroupRow({
                             </div>
                           )}
                           {isEditing && (
-                            <input
-                              type="text"
-                              value={editName}
+                            <div
+                              className="mt-1 space-y-1.5"
                               onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setEditName(e.target.value)}
-                              className="mt-1 w-full bg-[#0B0F17] border border-amber-500/60 rounded px-2 py-1 text-xs text-slate-100"
-                            />
+                            >
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="w-full bg-[#0B0F17] border border-amber-500/60 rounded px-2 py-1 text-xs text-slate-100"
+                              />
+                              <input
+                                type="text"
+                                value={editTags}
+                                onChange={(e) => setEditTags(e.target.value)}
+                                placeholder="Etiquetas/Grado o Nivel (ej. A, S, C, 12)"
+                                className="w-full bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] font-mono text-amber-300"
+                              />
+                            </div>
                           )}
                         </td>
 

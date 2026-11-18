@@ -25,6 +25,7 @@ import {
   normalizeIconInput,
   normalizeItemCatalog,
   normalizeItemKey,
+  resolveItemNameWithGrade,
   saveDatabase,
   stripItemEnchantPrefix,
 } from '../utils/storage';
@@ -320,7 +321,8 @@ export function useL2Database() {
         slot?: EquipmentSlot | null;
       }
     ) => {
-      const cleanName = item.name.trim();
+      const cleanTags = item.tags.map((t) => t.trim()).filter(Boolean);
+      const cleanName = resolveItemNameWithGrade(item.name, cleanTags);
       if (!cleanName) return;
       const newEntry: ItemEntry = {
         id: `item-${Date.now().toString(36)}-${Math.random()
@@ -330,7 +332,7 @@ export function useL2Database() {
         quantity: item.quantity,
         location: ownerType === 'clan' ? 'clan_warehouse' : item.location,
         slot: item.slot ?? null,
-        tags: item.tags.map((t) => t.trim()).filter(Boolean),
+        tags: cleanTags,
         uncertain: false,
       };
 
@@ -422,9 +424,22 @@ export function useL2Database() {
               return {
                 ...char,
                 updatedAt: now,
-                items: char.items.map((item) =>
-                  item.id === itemId ? {...item, ...patch} : item
-                ),
+                items: char.items.map((item) => {
+                  if (item.id !== itemId) return item;
+                  const nextTags = patch.tags
+                    ? patch.tags.map((t) => t.trim()).filter(Boolean)
+                    : item.tags;
+                  const rawNextName =
+                    patch.name !== undefined
+                      ? patch.name.trim() || item.name
+                      : item.name;
+                  return {
+                    ...item,
+                    ...patch,
+                    tags: nextTags,
+                    name: resolveItemNameWithGrade(rawNextName, nextTags),
+                  };
+                }),
               };
             }),
             updatedAt: now,
@@ -438,9 +453,22 @@ export function useL2Database() {
             return {
               ...clan,
               updatedAt: now,
-              items: clan.items.map((item) =>
-                item.id === itemId ? {...item, ...patch} : item
-              ),
+              items: clan.items.map((item) => {
+                if (item.id !== itemId) return item;
+                const nextTags = patch.tags
+                  ? patch.tags.map((t) => t.trim()).filter(Boolean)
+                  : item.tags;
+                const rawNextName =
+                  patch.name !== undefined
+                    ? patch.name.trim() || item.name
+                    : item.name;
+                return {
+                  ...item,
+                  ...patch,
+                  tags: nextTags,
+                  name: resolveItemNameWithGrade(rawNextName, nextTags),
+                };
+              }),
             };
           }),
           updatedAt: now,
@@ -481,7 +509,7 @@ export function useL2Database() {
   );
 
   const upsertCatalogEntry = useCallback((name: string, rawIcon: string) => {
-    const cleanName = stripItemEnchantPrefix(name);
+    const cleanName = resolveItemNameWithGrade(stripItemEnchantPrefix(name));
     if (!cleanName) return;
     const key = normalizeItemKey(cleanName);
 
@@ -517,7 +545,7 @@ export function useL2Database() {
   }, []);
 
   const deleteItemGlobally = useCallback((name: string) => {
-    const cleanName = stripItemEnchantPrefix(name);
+    const cleanName = resolveItemNameWithGrade(stripItemEnchantPrefix(name));
     if (!cleanName) return;
     const targetKey = normalizeItemKey(cleanName);
 
@@ -568,7 +596,7 @@ export function useL2Database() {
         const nextCatalog = normalizeItemCatalog(prev.itemCatalog);
 
         entries.forEach(({name, icon}) => {
-          const cleanName = stripItemEnchantPrefix(name);
+          const cleanName = resolveItemNameWithGrade(stripItemEnchantPrefix(name));
           const normalizedIcon = normalizeIconInput(icon, baseUrl);
           if (!cleanName || !normalizedIcon) return;
           const key = normalizeItemKey(cleanName);

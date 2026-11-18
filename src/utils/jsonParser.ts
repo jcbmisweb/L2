@@ -12,6 +12,7 @@ import {
   SubclassInfo,
 } from '../types/l2';
 import {deduplicateItemEntries} from './mergeDatabase';
+import {resolveItemNameWithGrade} from './storage';
 
 const VALID_LOCATIONS = new Set<ItemLocation>([
   'equipped',
@@ -264,13 +265,15 @@ export function parseImportInput(rawInput: string, db: L2Database): ParseImportR
       if (!itemRaw || typeof itemRaw !== 'object') return;
       const itemObj = itemRaw as Record<string, unknown>;
       const rawName = typeof itemObj.name === 'string' ? itemObj.name.trim() : '';
-      const name = rawName || `Objeto sin nombre (#${itemIdx + 1})`;
       const {quantity} = parseQuantity(itemObj.quantity);
       const location = normalizeLocation(itemObj.location, captureType);
       const slot = location === 'equipped' ? normalizeSlot(itemObj.slot) : null;
       const tags = Array.isArray(itemObj.tags)
         ? itemObj.tags.map((t) => String(t).trim()).filter(Boolean)
         : [];
+      const name = rawName
+        ? resolveItemNameWithGrade(rawName, tags)
+        : `Objeto sin nombre (#${itemIdx + 1})`;
       const uncertain = Boolean(itemObj.uncertain) || !rawName || quantity === null;
 
       if (uncertain) uncertainCount++;

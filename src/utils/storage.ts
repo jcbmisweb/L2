@@ -1,9 +1,175 @@
 import {createStarterDatabase} from '../data/starterData';
-import {ItemCatalogEntry, ItemLocation, L2Database} from '../types/l2';
+import {ItemCatalogEntry, ItemEntry, ItemLocation, L2Database} from '../types/l2';
 
 const STORAGE_KEY = 'l2es_vault_db_v1';
 
 export const DEFAULT_ICON_BASE_URL = 'https://l2j.ru/img/icons/';
+
+const GRADE_LABELS: Record<string, string> = {
+  ng: 'No-Grade',
+  'no-grade': 'No-Grade',
+  d: 'D-Grade',
+  c: 'C-Grade',
+  b: 'B-Grade',
+  a: 'A-Grade',
+  s: 'S-Grade',
+  s80: 'S80-Grade',
+  s84: 'S84-Grade',
+};
+
+function formatGradeToken(raw: string): string | null {
+  const clean = raw.trim().toLowerCase().replace(/\s+/g, '-');
+  return GRADE_LABELS[clean] || null;
+}
+
+function extractGradeFromTags(tags: string[]): string | null {
+  for (const tag of tags) {
+    const t = tag.trim();
+    if (!t) continue;
+    const prefixMatch = t.match(
+      /^(?:grade|grado)[-\s:]*(no[-\s]?grade|ng|s84|s80|[sabcd])$/i
+    );
+    if (prefixMatch) {
+      const formatted = formatGradeToken(prefixMatch[1]);
+      if (formatted) return formatted;
+    }
+    const suffixMatch = t.match(
+      /^(no[-\s]?grade|ng|s84|s80|[sabcd])(?:[-\s]*(?:grade|grado))?$/i
+    );
+    if (suffixMatch) {
+      const formatted = formatGradeToken(suffixMatch[1]);
+      if (formatted) return formatted;
+    }
+  }
+  return null;
+}
+
+function extractSoulCrystalStageFromTags(tags: string[]): number | null {
+  for (const tag of tags) {
+    const t = tag.trim();
+    if (!t) continue;
+    const labeled = t.match(
+      /^(?:stage|lv\.?|level|nivel|step)[-\s:]*(1[0-8]|[1-9])$/i
+    );
+    if (labeled) return Number(labeled[1]);
+    const numeric = t.match(/^(1[0-8]|[1-9])$/);
+    if (numeric) return Number(numeric[1]);
+  }
+  return null;
+}
+
+function hasGradeInName(name: string): boolean {
+  return (
+    /\(\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\)/i.test(
+      name
+    ) ||
+    /\(\s*(?:grade|grado)\s+(?:no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)/i.test(
+      name
+    ) ||
+    /\[\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]/i.test(
+      name
+    ) ||
+    /\b(?:no[-\s]?grade|s84|s80|[sabcd])\s*-?\s*grade\b/i.test(name) ||
+    /\b(?:grade|grado)\s+(?:no[-\s]?grade|ng|s84|s80|[sabcd])\b/i.test(name) ||
+    /(?:\s+-\s+|\s+)(?:s84|s80|[sabcd])$/i.test(name)
+  );
+}
+
+function isGradeDifferentiatedItem(name: string): boolean {
+  return (
+    /\bscroll:\s*enchant\b/i.test(name) ||
+    /\b(?:ancient|divine|crystal)\s*crystal:\s*enchant\b/i.test(name) ||
+    /\bscroll:\s*recovery\b/i.test(name) ||
+    /^crystal(?:\s*[\[(][^\]\)]+[\])]|\s*[-–]?\s*(?:grade|grado)?\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?)?$/i.test(
+      name
+    ) ||
+    /^(?:blessed\s+)?(?:beast\s+)?(?:soul|spirit)shot\b/i.test(name) ||
+    /^elixir\s+of\s+(?:life|cp|mental\s+strength)\b/i.test(name)
+  );
+}
+
+/**
+ * Ensures grade-differentiated items (Enchant/Recovery scrolls, base Crystals,
+ * Soulshots/Spiritshots, Elixirs) and Soul Crystals (Stages 1–18 or grades)
+ * preserve their grade or level inside `name` using `tags` when missing,
+ * so different grades/stages never collapse into a single item.
+ */
+export function resolveItemNameWithGrade(
+  name: string,
+  tags?: string[] | null
+): string {
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+  const cleanTags = Array.isArray(tags)
+    ? tags.map((t) => String(t).trim()).filter(Boolean)
+    : [];
+
+  // 1. Soul Crystals (e.g. Red Soul Crystal - Stage 12, Blue Soul Crystal - Stage 10)
+  if (/\bsoul\s+crystal\b/i.test(trimmed)) {
+    const stageMatch = trimmed.match(
+      /^(.*?)\s*(?:\[\s*(?:(?:stage|lv\.?|level|nivel|step)[-\s:]*)?(1[0-8]|[1-9])\s*\]|\(\s*(?:(?:stage|lv\.?|level|nivel|step)[-\s:]*)?(1[0-8]|[1-9])\s*\)|[-–]\s*(?:(?:stage|lv\.?|level|nivel|step)[-\s:]*)?(1[0-8]|[1-9])|\s+(?:stage|lv\.?|level|nivel|step)[-\s:]*(1[0-8]|[1-9])|\s+(1[0-8]|[1-9]))$/i
+    );
+    if (stageMatch) {
+      const base = stageMatch[1].trim();
+      const stage =
+        stageMatch[2] ||
+        stageMatch[3] ||
+        stageMatch[4] ||
+        stageMatch[5] ||
+        stageMatch[6];
+      if (base && stage) {
+        return `${base} - Stage ${stage}`;
+      }
+    }
+
+    if (/\b(?:stage|lv\.?|level|nivel|step)\s*(?:1[0-8]|[1-9])\b/i.test(trimmed)) {
+      return trimmed;
+    }
+
+    const stageFromTag = extractSoulCrystalStageFromTags(cleanTags);
+    if (stageFromTag !== null) {
+      return `${trimmed} - Stage ${stageFromTag}`;
+    }
+
+    if (hasGradeInName(trimmed)) {
+      return trimmed;
+    }
+
+    const gradeFromTag = extractGradeFromTags(cleanTags);
+    if (gradeFromTag) {
+      return `${trimmed} (${gradeFromTag})`;
+    }
+
+    return trimmed;
+  }
+
+  // 2. Grade-differentiated Scrolls, Crystals, Shots, Elixirs
+  if (isGradeDifferentiatedItem(trimmed)) {
+    const bracketOrBareGrade = trimmed.match(
+      /^(.*?)\s*(?:\[\s*(?:(?:grade|grado)[-\s:]*)?(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]|\(\s*(no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)|[-–]\s*(?:(?:grade|grado)[-\s:]*)?(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?)$/i
+    );
+    if (bracketOrBareGrade) {
+      const base = bracketOrBareGrade[1].trim();
+      const rawGrade =
+        bracketOrBareGrade[2] || bracketOrBareGrade[3] || bracketOrBareGrade[4];
+      const formatted = rawGrade ? formatGradeToken(rawGrade) : null;
+      if (base && formatted) {
+        return `${base} (${formatted})`;
+      }
+    }
+
+    if (hasGradeInName(trimmed)) {
+      return trimmed;
+    }
+
+    const gradeFromTag = extractGradeFromTags(cleanTags);
+    if (gradeFromTag) {
+      return `${trimmed} (${gradeFromTag})`;
+    }
+  }
+
+  return trimmed;
+}
 
 /**
  * Removes Lineage 2 enchant prefixes ("+1 ", "+3 ", "+16 ") and condition
@@ -31,7 +197,31 @@ export function normalizeExactItemKey(name: string): string {
 }
 
 export function normalizeItemKey(name: string): string {
-  return stripItemEnchantPrefix(name).toLowerCase();
+  return stripItemEnchantPrefix(name)
+    .toLowerCase()
+    .replace(
+      /\(\s*(?:grade|grado)\s+(no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)/g,
+      (_, g: string) => {
+        const clean = g.replace(/\s+/g, '-');
+        return clean === 'ng' || clean === 'no-grade'
+          ? '(no-grade)'
+          : `(${clean}-grade)`;
+      }
+    )
+    .replace(
+      /\[\s*(?:grade|grado)?\s*(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]/g,
+      (_, g: string) => {
+        const clean = g.replace(/\s+/g, '-');
+        return clean === 'ng' || clean === 'no-grade'
+          ? '(no-grade)'
+          : `(${clean}-grade)`;
+      }
+    )
+    .replace(/\(\s*(s84|s80|[sabcd])\s*\)/g, '($1-grade)')
+    .replace(
+      /(\bsoul\s+crystal)\s*(?:-|\(|\[)?\s*(?:stage|level|nivel|lv\.?|step)?\s*(1[0-8]|[1-9])\s*(?:\)|\])?$/g,
+      '$1 - stage $2'
+    );
 }
 
 export function normalizeItemCatalog(
@@ -42,7 +232,7 @@ export function normalizeItemCatalog(
 
   for (const entry of Object.values(rawCatalog)) {
     if (!entry || typeof entry.name !== 'string') continue;
-    const cleanName = stripItemEnchantPrefix(entry.name);
+    const cleanName = resolveItemNameWithGrade(stripItemEnchantPrefix(entry.name));
     if (!cleanName) continue;
     const key = normalizeItemKey(cleanName);
     const normalizedEntry: ItemCatalogEntry = {
@@ -107,6 +297,22 @@ export function resolveItemIconUrl(
   return `${prefix}${file}`;
 }
 
+function normalizeStoredItems(items: unknown): ItemEntry[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw as ItemEntry;
+    const entry = raw as ItemEntry;
+    const tags = Array.isArray(entry.tags)
+      ? entry.tags.map((t) => String(t).trim()).filter(Boolean)
+      : [];
+    return {
+      ...entry,
+      name: resolveItemNameWithGrade(String(entry.name || ''), tags),
+      tags,
+    };
+  });
+}
+
 export function loadDatabase(): L2Database {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -128,8 +334,14 @@ export function loadDatabase(): L2Database {
     }
     return {
       version: 1,
-      characters: parsed.characters,
-      clans: parsed.clans,
+      characters: parsed.characters.map((c) => ({
+        ...c,
+        items: normalizeStoredItems(c.items),
+      })),
+      clans: parsed.clans.map((cl) => ({
+        ...cl,
+        items: normalizeStoredItems(cl.items),
+      })),
       accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
       iconBaseUrl:
         typeof parsed.iconBaseUrl === 'string' && parsed.iconBaseUrl.trim()

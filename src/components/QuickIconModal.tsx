@@ -7,6 +7,7 @@ import {
   normalizeIconInput,
   normalizeItemKey,
   resolveItemIconUrl,
+  resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from '../utils/storage';
 
@@ -71,7 +72,7 @@ export function QuickIconModal({
 
   if (!itemName) return null;
 
-  const baseItemName = stripItemEnchantPrefix(itemName);
+  const baseItemName = resolveItemNameWithGrade(stripItemEnchantPrefix(itemName));
   const base = iconBaseUrl || DEFAULT_ICON_BASE_URL;
   const previewUrl = resolveItemIconUrl(iconInput, base);
 
