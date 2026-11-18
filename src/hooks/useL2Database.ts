@@ -833,23 +833,31 @@ export function useL2Database() {
   const deleteAccount = useCallback((accountId: string) => {
     setDb((prev) => {
       const target = prev.accounts.find((a) => a.id === accountId);
-      if (!target) return prev;
-      const hasChars = prev.characters.some(
-        (c) => c.server === target.server && c.account === target.account
+      const sepIdx = accountId.indexOf('::');
+      const targetServer =
+        target?.server ?? (sepIdx >= 0 ? accountId.slice(0, sepIdx) : '');
+      const targetAccount =
+        target?.account ?? (sepIdx >= 0 ? accountId.slice(sepIdx + 2) : accountId);
+
+      const accounts = prev.accounts.filter(
+        (a) =>
+          a.id !== accountId &&
+          !(
+            targetServer &&
+            targetAccount &&
+            a.server === targetServer &&
+            a.account === targetAccount
+          )
       );
 
-      // If characters exist under this account, clear only credentials so inventories are never orphaned
-      const accounts = hasChars
-        ? prev.accounts.map((a) =>
-            a.id === accountId
-              ? {...a, email: null, password: null, ssn: null, notes: null}
-              : a
-          )
-        : prev.accounts.filter((a) => a.id !== accountId);
+      const characters = prev.characters.filter(
+        (c) => !(c.server === targetServer && c.account === targetAccount)
+      );
 
       return {
         ...prev,
         accounts,
+        characters,
         updatedAt: new Date().toISOString(),
       };
     });

@@ -1162,7 +1162,9 @@ function AccountTable({
                         onClick={() => onConfirmDelete(acc.id)}
                         className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-[11px] font-medium"
                       >
-                        Borrar
+                        {acc.characters.length > 0
+                          ? `Borrar (+${acc.characters.length} PJ)`
+                          : 'Borrar'}
                       </button>
                       <button
                         type="button"
@@ -1395,7 +1397,9 @@ function AccountCardGrid({
                       onClick={() => onConfirmDelete(acc.id)}
                       className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-medium"
                     >
-                      Confirmar borrado
+                      {acc.characters.length > 0
+                        ? `Confirmar (+${acc.characters.length} PJ)`
+                        : 'Confirmar borrado'}
                     </button>
                     <button
                       type="button"

@@ -1,5 +1,6 @@
 import {useMemo, useState} from 'react';
 import {AccountDetailView} from './components/AccountDetailView';
+import {AccountsDashboardView} from './components/AccountsDashboardView';
 import {AccountsDirectoryView} from './components/AccountsDirectoryView';
 import {AiBridgeView} from './components/AiBridgeView';
 import {BackupModal} from './components/BackupModal';
@@ -92,6 +93,9 @@ export default function App() {
   const breadcrumbs = useMemo(() => {
     const serverLabel =
       selectedServer === 'all' ? 'Todos los servidores' : selectedServer;
+    if (activeView === 'dashboard') {
+      return [serverLabel, 'Panel de cuentas y personajes'];
+    }
     if (activeView === 'search') {
       return [serverLabel, 'Buscador de ítems'];
     }
@@ -156,6 +160,25 @@ export default function App() {
     setActiveView('accounts');
   };
 
+  const handleDeleteAccount = (accountId: string) => {
+    const targetChar = selectedCharacterId
+      ? db.characters.find((c) => c.id === selectedCharacterId)
+      : null;
+    deleteAccount(accountId);
+    if (selectedAccountId === accountId) {
+      setSelectedAccountId(null);
+      if (activeView === 'account') {
+        setActiveView('accounts');
+      }
+    }
+    if (
+      targetChar &&
+      `${targetChar.server}::${targetChar.account}` === accountId
+    ) {
+      setSelectedCharacterId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex">
       <Sidebar
@@ -167,6 +190,7 @@ export default function App() {
         selectedCharacterId={selectedCharacterId}
         selectedClanId={selectedClanId}
         selectedAccountId={selectedAccountId}
+        onNavigateDashboard={() => setActiveView('dashboard')}
         onNavigateSearch={() => setActiveView('search')}
         onNavigateBridge={() => setActiveView('bridge')}
         onNavigateCatalog={() => setActiveView('catalog')}
@@ -192,7 +216,22 @@ export default function App() {
         />
 
         <main className="flex-1 p-4 sm:p-6 max-w-[1440px] w-full mx-auto">
-          {activeView === 'bridge' ? (
+          {activeView === 'dashboard' ? (
+            <AccountsDashboardView
+              db={db}
+              selectedServer={selectedServer}
+              onSelectCharacter={handleOpenCharacter}
+              onSelectAccount={handleOpenAccount}
+              onSelectEmail={handleOpenEmail}
+              onSelectClan={handleOpenClan}
+              onDeleteAccount={handleDeleteAccount}
+              onNavigateAccounts={() => {
+                setSelectedEmailFilter(null);
+                setActiveView('accounts');
+              }}
+              onNavigateProfessions={() => setActiveView('professions')}
+            />
+          ) : activeView === 'bridge' ? (
             <AiBridgeView
               db={db}
               onApplyImport={applyImport}
@@ -235,7 +274,7 @@ export default function App() {
               initialEmailFilter={selectedEmailFilter}
               onUpsertAccount={upsertAccount}
               onBulkUpsertAccounts={bulkUpsertAccounts}
-              onDeleteAccount={deleteAccount}
+              onDeleteAccount={handleDeleteAccount}
               onSelectCharacter={handleOpenCharacter}
               onSelectAccount={handleOpenAccount}
             />
@@ -258,6 +297,7 @@ export default function App() {
               onSelectEmail={handleOpenEmail}
               onNavigateBridge={() => setActiveView('bridge')}
               onUpsertAccount={upsertAccount}
+              onDeleteAccount={handleDeleteAccount}
             />
           ) : activeView === 'character' && selectedCharacter ? (
             <CharacterDetailView

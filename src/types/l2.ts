@@ -176,6 +176,7 @@ export interface ParseImportResult {
 }
 
 export type ActiveView =
+  | 'dashboard'
   | 'search'
   | 'bridge'
   | 'character'

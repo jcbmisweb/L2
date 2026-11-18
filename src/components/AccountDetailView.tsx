@@ -10,6 +10,7 @@ import {
   Search,
   Shield,
   Sparkles,
+  Trash2,
   User,
   X,
 } from 'lucide-react';
@@ -55,6 +56,7 @@ interface AccountDetailViewProps {
     lastIp?: string | null;
     originalId?: string;
   }) => void;
+  onDeleteAccount: (accountId: string) => void;
 }
 
 export function AccountDetailView({
@@ -72,10 +74,12 @@ export function AccountDetailView({
   onSelectEmail,
   onNavigateBridge,
   onUpsertAccount,
+  onDeleteAccount,
 }: AccountDetailViewProps) {
   const [showSecrets, setShowSecrets] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [editingMeta, setEditingMeta] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [rosterView, setRosterView] = useState<'cards' | 'table'>('cards');
 
   const [emailInput, setEmailInput] = useState(accountMeta?.email || '');
@@ -315,8 +319,49 @@ export function AccountDetailView({
               <Sparkles className="w-3.5 h-3.5" />
               <span>Añadir personaje</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteAccount((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-950/40 hover:bg-red-900/50 border border-red-800/60 text-xs text-red-300 whitespace-nowrap shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Eliminar cuenta</span>
+            </button>
           </div>
         </div>
+
+        {/* Inline Delete Account Confirmation */}
+        {confirmDeleteAccount && (
+          <div className="bg-red-950/35 border border-red-800/70 rounded-md p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="text-red-200">
+              ¿Seguro que quieres eliminar la cuenta{' '}
+              <span className="font-bold text-white">{accountName}</span>
+              {characters.length > 0
+                ? ` junto con sus ${characters.length} ${
+                    characters.length === 1 ? 'personaje' : 'personajes'
+                  }`
+                : ''}
+              ? Esta acción no se puede deshacer.
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteAccount(false)}
+                className="px-3 py-1.5 rounded bg-[#111827] border border-[#283548] text-slate-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeleteAccount(accountId)}
+                className="px-3.5 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-semibold"
+              >
+                Sí, eliminar cuenta
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Inline Edit Credentials Form */}
         {editingMeta && (

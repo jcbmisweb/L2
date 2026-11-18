@@ -3,6 +3,7 @@ import {
   Download,
   GitFork,
   Image as ImageIcon,
+  LayoutDashboard,
   Mail,
   Search,
   Shield,
@@ -23,6 +24,7 @@ interface SidebarProps {
   selectedCharacterId: string | null;
   selectedClanId: string | null;
   selectedAccountId: string | null;
+  onNavigateDashboard: () => void;
   onNavigateSearch: () => void;
   onNavigateBridge: () => void;
   onNavigateCatalog: () => void;
@@ -46,6 +48,7 @@ export function Sidebar({
   selectedCharacterId,
   selectedClanId,
   selectedAccountId,
+  onNavigateDashboard,
   onNavigateSearch,
   onNavigateBridge,
   onNavigateCatalog,
@@ -145,6 +148,27 @@ export function Sidebar({
 
       {/* Primary Workspace Navigation */}
       <div className="p-3 space-y-1 border-b border-[#1E293B]">
+        <button
+          type="button"
+          onClick={() => {
+            onNavigateDashboard();
+            onCloseMobile();
+          }}
+          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-amber-500 ${
+            activeView === 'dashboard'
+              ? 'bg-amber-500/15 text-amber-400'
+              : 'text-slate-300 hover:bg-[#161F30] hover:text-slate-100'
+          }`}
+        >
+          <span className="flex items-center gap-2.5 truncate">
+            <LayoutDashboard className="w-4 h-4 shrink-0" />
+            <span>Panel cuentas y PJ</span>
+          </span>
+          <span className="font-mono text-[11px] tabular-nums text-slate-500">
+            {filteredAccounts.length}
+          </span>
+        </button>
+
         <button
           type="button"
           onClick={() => {
@@ -356,9 +380,17 @@ export function Sidebar({
         {/* Accounts & Characters section */}
         <div>
           <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-xs font-semibold text-slate-400">
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateDashboard();
+                onCloseMobile();
+              }}
+              title="Abrir panel de cuentas y personajes"
+              className="text-xs font-semibold text-slate-400 hover:text-amber-300 transition-colors"
+            >
               Cuentas y personajes
-            </span>
+            </button>
             <span className="font-mono text-[11px] tabular-nums text-slate-500">
               {filteredAccounts.length}
             </span>
