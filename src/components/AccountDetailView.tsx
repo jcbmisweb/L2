@@ -3,6 +3,9 @@ import {
   Copy,
   Eye,
   EyeOff,
+  LayoutGrid,
+  List,
+  Mail,
   Pencil,
   Search,
   Shield,
@@ -38,6 +41,7 @@ interface AccountDetailViewProps {
   onQuickEditIcon: (itemName: string) => void;
   onSelectCharacter: (id: string) => void;
   onSelectClan: (id: string) => void;
+  onSelectEmail?: (email: string) => void;
   onNavigateBridge: () => void;
   onUpsertAccount: (input: {
     server: string;
@@ -46,6 +50,9 @@ interface AccountDetailViewProps {
     password?: string | null;
     ssn?: string | null;
     notes?: string | null;
+    creationDate?: string | null;
+    lastAccess?: string | null;
+    lastIp?: string | null;
     originalId?: string;
   }) => void;
 }
@@ -62,17 +69,26 @@ export function AccountDetailView({
   onQuickEditIcon,
   onSelectCharacter,
   onSelectClan,
+  onSelectEmail,
   onNavigateBridge,
   onUpsertAccount,
 }: AccountDetailViewProps) {
   const [showSecrets, setShowSecrets] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [editingMeta, setEditingMeta] = useState(false);
+  const [rosterView, setRosterView] = useState<'cards' | 'table'>('cards');
 
   const [emailInput, setEmailInput] = useState(accountMeta?.email || '');
   const [passwordInput, setPasswordInput] = useState(accountMeta?.password || '');
   const [ssnInput, setSsnInput] = useState(accountMeta?.ssn || '');
   const [notesInput, setNotesInput] = useState(accountMeta?.notes || '');
+  const [creationDateInput, setCreationDateInput] = useState(
+    accountMeta?.creationDate || ''
+  );
+  const [lastAccessInput, setLastAccessInput] = useState(
+    accountMeta?.lastAccess || ''
+  );
+  const [lastIpInput, setLastIpInput] = useState(accountMeta?.lastIp || '');
 
   const [activeLoc, setActiveLoc] = useState<'all' | ItemLocation>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
@@ -184,6 +200,9 @@ export function AccountDetailView({
     setPasswordInput(accountMeta?.password || '');
     setSsnInput(accountMeta?.ssn || '');
     setNotesInput(accountMeta?.notes || '');
+    setCreationDateInput(accountMeta?.creationDate || '');
+    setLastAccessInput(accountMeta?.lastAccess || '');
+    setLastIpInput(accountMeta?.lastIp || '');
     setEditingMeta(true);
   };
 
@@ -196,6 +215,9 @@ export function AccountDetailView({
       password: passwordInput,
       ssn: ssnInput.replace(/^ssn\s*:\s*/i, ''),
       notes: notesInput,
+      creationDate: creationDateInput,
+      lastAccess: lastAccessInput,
+      lastIp: lastIpInput,
       originalId: accountId,
     });
     setEditingMeta(false);
@@ -214,11 +236,38 @@ export function AccountDetailView({
               <span className="text-xs text-slate-400">{server}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-400">
-              <span>Correo: {accountMeta?.email || 'Sin asignar'}</span>
+              <span className="inline-flex items-center gap-1">
+                <span>Correo:</span>
+                {accountMeta?.email && onSelectEmail ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelectEmail(accountMeta.email!)}
+                    className="inline-flex items-center gap-1 text-amber-300 hover:underline font-medium"
+                    title="Ver todas las cuentas de este correo"
+                  >
+                    <Mail className="w-3 h-3" />
+                    <span>{accountMeta.email}</span>
+                  </button>
+                ) : (
+                  <span>{accountMeta?.email || 'Sin asignar'}</span>
+                )}
+              </span>
+              {accountMeta?.creationDate && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>Creación: {accountMeta.creationDate}</span>
+                </>
+              )}
               {accountMeta?.lastAccess && (
                 <>
                   <span aria-hidden="true">·</span>
                   <span>Último acceso: {accountMeta.lastAccess}</span>
+                </>
+              )}
+              {accountMeta?.lastIp && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-mono">IP: {accountMeta.lastIp}</span>
                 </>
               )}
               {accountMeta?.notes && (
@@ -311,6 +360,36 @@ export function AccountDetailView({
                   value={notesInput}
                   onChange={(e) => setNotesInput(e.target.value)}
                   className="w-full bg-[#111827] border border-[#1E293B] rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">Fecha creación</label>
+                <input
+                  type="text"
+                  value={creationDateInput}
+                  onChange={(e) => setCreationDateInput(e.target.value)}
+                  placeholder="Ej. 19/09/2009 16:03"
+                  className="w-full bg-[#111827] border border-[#1E293B] rounded px-2.5 py-1.5 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">Último acceso</label>
+                <input
+                  type="text"
+                  value={lastAccessInput}
+                  onChange={(e) => setLastAccessInput(e.target.value)}
+                  placeholder="Ej. 11/11/2026 14:04"
+                  className="w-full bg-[#111827] border border-[#1E293B] rounded px-2.5 py-1.5 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">Última IP</label>
+                <input
+                  type="text"
+                  value={lastIpInput}
+                  onChange={(e) => setLastIpInput(e.target.value)}
+                  placeholder="Ej. 88.20.221.56"
+                  className="w-full bg-[#111827] border border-[#1E293B] rounded px-2.5 py-1.5 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>
@@ -441,16 +520,47 @@ export function AccountDetailView({
 
       {/* Characters Roster of this Account */}
       <section className="bg-[#111827] border border-[#1E293B] rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-[#1E293B] flex items-center justify-between">
-          <h2 className="font-display text-sm font-semibold text-slate-100">
-            Personajes de {accountName} ({characters.length})
-          </h2>
-          {accountMeta?.expectedCharacters &&
-            characters.length < accountMeta.expectedCharacters && (
-              <span className="font-mono text-xs text-amber-400">
-                Faltan {accountMeta.expectedCharacters - characters.length} por capturar
-              </span>
-            )}
+        <div className="px-4 py-3 border-b border-[#1E293B] flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-display text-sm font-semibold text-slate-100">
+              Personajes de {accountName} ({characters.length})
+            </h2>
+            {accountMeta?.expectedCharacters &&
+              characters.length < accountMeta.expectedCharacters && (
+                <span className="font-mono text-xs text-amber-400">
+                  Faltan {accountMeta.expectedCharacters - characters.length} por capturar
+                </span>
+              )}
+          </div>
+
+          <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+            <button
+              type="button"
+              onClick={() => setRosterView('cards')}
+              aria-label="Vista en tarjetas"
+              title="Vista en tarjetas"
+              className={`p-1.5 rounded transition-colors ${
+                rosterView === 'cards'
+                  ? 'bg-[#1E293B] text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setRosterView('table')}
+              aria-label="Vista en tabla"
+              title="Vista en tabla"
+              className={`p-1.5 rounded transition-colors ${
+                rosterView === 'table'
+                  ? 'bg-[#1E293B] text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {characters.length === 0 ? (
@@ -463,6 +573,132 @@ export function AccountDetailView({
             >
               Ir al Puente IA para importar sus capturas
             </button>
+          </div>
+        ) : rosterView === 'cards' ? (
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {characters.map((char) => {
+              const st = char.character;
+              const charAdena = char.items.reduce((acc, it) => {
+                if (
+                  it.name.trim().toLowerCase() === 'adena' &&
+                  typeof it.quantity === 'number'
+                ) {
+                  return acc + it.quantity;
+                }
+                return acc;
+              }, 0);
+
+              return (
+                <article
+                  key={char.id}
+                  className={`rounded-lg border p-4 flex flex-col justify-between gap-4 transition-colors ${
+                    char.status === 'pending'
+                      ? 'bg-amber-950/15 border-amber-500/40'
+                      : 'bg-[#0B0F17] border-[#1E293B] hover:border-slate-600'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    {/* Card Header: Clan + Character Name */}
+                    <div className="flex flex-col items-center text-center gap-1">
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        {char.clan && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#161F30] border border-[#283548] text-[10px] font-medium text-amber-300">
+                            <Shield className="w-2.5 h-2.5 shrink-0" />
+                            <span>{char.clan}</span>
+                          </span>
+                        )}
+                        <h3 className="font-display text-base font-bold text-slate-100">
+                          {st.name}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px]">
+                        {char.status === 'pending' ? (
+                          <span className="text-amber-400 font-medium">
+                            Pendiente de capturar
+                          </span>
+                        ) : st.online ? (
+                          <span className="text-emerald-400 font-medium">
+                            Online
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Two-column vertical-divider info rows (matching L2 character panel) */}
+                    <div className="text-xs space-y-1.5">
+                      <div className="grid grid-cols-[112px_1fr] items-center">
+                        <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                          Nivel
+                        </span>
+                        <span className="pl-3 font-mono tabular-nums text-slate-100">
+                          {st.level ?? '—'}
+                          {st.level_progress_pct !== null &&
+                          st.level_progress_pct !== undefined
+                            ? ` (${st.level_progress_pct}%)`
+                            : ''}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-[112px_1fr] items-center">
+                        <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                          Raza
+                        </span>
+                        <span className="pl-3 text-slate-200 truncate">
+                          {st.race || '—'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-[112px_1fr] items-center">
+                        <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                          Profesión
+                        </span>
+                        <span className="pl-3 text-slate-200 truncate">
+                          {st.class || '—'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-[112px_1fr] items-center">
+                        <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                          Último acceso
+                        </span>
+                        <span className="pl-3 font-mono text-[11px] tabular-nums text-slate-300 truncate">
+                          {st.last_access || '—'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-[112px_1fr] items-center">
+                        <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                          Ubicación
+                        </span>
+                        <span className="pl-3 text-slate-300 truncate">
+                          {st.location || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+                      <span className="font-mono tabular-nums">
+                        {char.items.length} ítems
+                      </span>
+                      <span className="font-mono tabular-nums text-amber-400/90">
+                        {charAdena > 0 ? `${formatAdenaShort(charAdena)} Adena` : '—'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectCharacter(char.id)}
+                      className="w-full py-2 px-3 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-colors"
+                    >
+                      Ver personaje
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="overflow-x-auto">

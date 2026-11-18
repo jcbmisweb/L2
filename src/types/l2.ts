@@ -101,7 +101,9 @@ export interface AccountMeta {
   ssn?: string | null;
   notes?: string | null;
   expectedCharacters?: number | null;
+  creationDate?: string | null;
   lastAccess?: string | null;
+  lastIp?: string | null;
 }
 
 export interface ItemCatalogEntry {

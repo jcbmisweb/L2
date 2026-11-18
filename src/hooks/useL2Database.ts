@@ -595,6 +595,9 @@ export function useL2Database() {
       password?: string | null;
       ssn?: string | null;
       notes?: string | null;
+      creationDate?: string | null;
+      lastAccess?: string | null;
+      lastIp?: string | null;
       originalId?: string;
     }) => {
       const server = input.server.trim();
@@ -619,6 +622,18 @@ export function useL2Database() {
           password: input.password?.trim() ? input.password.trim() : null,
           ssn: input.ssn?.trim() ? input.ssn.trim() : null,
           notes: input.notes?.trim() ? input.notes.trim() : null,
+          creationDate:
+            input.creationDate !== undefined
+              ? input.creationDate?.trim() || null
+              : existing?.creationDate ?? null,
+          lastAccess:
+            input.lastAccess !== undefined
+              ? input.lastAccess?.trim() || null
+              : existing?.lastAccess ?? null,
+          lastIp:
+            input.lastIp !== undefined
+              ? input.lastIp?.trim() || null
+              : existing?.lastIp ?? null,
         };
 
         const existsIdx = filtered.findIndex((a) => a.id === id);

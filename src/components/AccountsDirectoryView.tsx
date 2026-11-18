@@ -6,6 +6,8 @@ import {
   Eye,
   EyeOff,
   FileSpreadsheet,
+  LayoutGrid,
+  List,
   Mail,
   Pencil,
   Plus,
@@ -13,13 +15,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {AccountMeta, CharacterRecord, L2Database} from '../types/l2';
+import {parseFlexibleTimestamp} from '../utils/mergeDatabase';
 
 interface AccountsDirectoryViewProps {
   db: L2Database;
   servers: string[];
   selectedServer: string;
+  initialEmailFilter?: string | null;
   onUpsertAccount: (input: {
     server: string;
     account: string;
@@ -27,6 +31,9 @@ interface AccountsDirectoryViewProps {
     password?: string | null;
     ssn?: string | null;
     notes?: string | null;
+    creationDate?: string | null;
+    lastAccess?: string | null;
+    lastIp?: string | null;
     originalId?: string;
   }) => void;
   onBulkUpsertAccounts: (
@@ -166,6 +173,7 @@ export function AccountsDirectoryView({
   db,
   servers,
   selectedServer,
+  initialEmailFilter,
   onUpsertAccount,
   onBulkUpsertAccounts,
   onDeleteAccount,
@@ -178,12 +186,22 @@ export function AccountsDirectoryView({
       : servers[0] || 'Valakas [x10]';
 
   const [query, setQuery] = useState('');
-  const [emailFilter, setEmailFilter] = useState('all');
+  const [emailFilter, setEmailFilter] = useState(initialEmailFilter || 'all');
   const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
+  const [groupedLayout, setGroupedLayout] = useState<'cards' | 'table'>('cards');
   const [showAllSecrets, setShowAllSecrets] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
   const [collapsedEmails, setCollapsedEmails] = useState<Record<string, boolean>>({});
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialEmailFilter) {
+      setEmailFilter(initialEmailFilter);
+      setViewMode('grouped');
+    } else {
+      setEmailFilter('all');
+    }
+  }, [initialEmailFilter]);
 
   // Add/Edit form state
   const [showForm, setShowForm] = useState(false);
@@ -194,6 +212,9 @@ export function AccountsDirectoryView({
   const [formEmail, setFormEmail] = useState('');
   const [formSsn, setFormSsn] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formCreationDate, setFormCreationDate] = useState('');
+  const [formLastAccess, setFormLastAccess] = useState('');
+  const [formLastIp, setFormLastIp] = useState('');
 
   // Bulk Excel/CSV paste state
   const [showBulk, setShowBulk] = useState(false);
@@ -339,6 +360,9 @@ export function AccountsDirectoryView({
     );
     setFormSsn('');
     setFormNotes('');
+    setFormCreationDate('');
+    setFormLastAccess('');
+    setFormLastIp('');
     setShowForm(true);
     setShowBulk(false);
   };
@@ -351,6 +375,9 @@ export function AccountsDirectoryView({
     setFormEmail(acc.email || '');
     setFormSsn(acc.ssn || '');
     setFormNotes(acc.notes || '');
+    setFormCreationDate(acc.creationDate || '');
+    setFormLastAccess(acc.lastAccess || '');
+    setFormLastIp(acc.lastIp || '');
     setShowForm(true);
     setShowBulk(false);
   };
@@ -365,6 +392,9 @@ export function AccountsDirectoryView({
       email: formEmail,
       ssn: cleanSsnValue(formSsn),
       notes: formNotes,
+      creationDate: formCreationDate,
+      lastAccess: formLastAccess,
+      lastIp: formLastIp,
       originalId: editingOriginalId,
     });
     setShowForm(false);
@@ -501,29 +531,62 @@ export function AccountsDirectoryView({
             </span>
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
-            <button
-              type="button"
-              onClick={() => setViewMode('grouped')}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                viewMode === 'grouped'
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Agrupado por correo
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                viewMode === 'table'
-                  ? 'bg-[#1E293B] text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Tabla general
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {viewMode === 'grouped' && (
+              <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setGroupedLayout('cards')}
+                  aria-label="Tarjetas por correo"
+                  title="Tarjetas por correo"
+                  className={`p-1.5 rounded transition-colors ${
+                    groupedLayout === 'cards'
+                      ? 'bg-[#1E293B] text-slate-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGroupedLayout('table')}
+                  aria-label="Lista por correo"
+                  title="Lista por correo"
+                  className={`p-1.5 rounded transition-colors ${
+                    groupedLayout === 'table'
+                      ? 'bg-[#1E293B] text-slate-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md">
+              <button
+                type="button"
+                onClick={() => setViewMode('grouped')}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  viewMode === 'grouped'
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Agrupado por correo
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                  viewMode === 'table'
+                    ? 'bg-[#1E293B] text-slate-100'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Tabla general
+              </button>
+            </div>
           </div>
         </div>
 
@@ -638,6 +701,39 @@ export function AccountsDirectoryView({
                 onChange={(e) => setFormNotes(e.target.value)}
                 placeholder="Opcional (ej. cuenta enanos)"
                 className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Fecha creación</label>
+              <input
+                type="text"
+                value={formCreationDate}
+                onChange={(e) => setFormCreationDate(e.target.value)}
+                placeholder="Ej. 19/09/2009 16:03"
+                className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md px-3 py-2 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Último acceso</label>
+              <input
+                type="text"
+                value={formLastAccess}
+                onChange={(e) => setFormLastAccess(e.target.value)}
+                placeholder="Ej. 11/11/2026 14:04"
+                className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md px-3 py-2 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-400 mb-1">Última IP</label>
+              <input
+                type="text"
+                value={formLastIp}
+                onChange={(e) => setFormLastIp(e.target.value)}
+                placeholder="Ej. 88.20.221.56"
+                className="w-full bg-[#0B0F17] border border-[#1E293B] rounded-md px-3 py-2 font-mono text-slate-100 focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
@@ -794,28 +890,49 @@ export function AccountsDirectoryView({
                   )}
                 </div>
 
-                {!isCollapsed && (
-                  <AccountTable
-                    accounts={group.accounts}
-                    showEmailColumn={false}
-                    showAllSecrets={showAllSecrets}
-                    revealedIds={revealedIds}
-                    onToggleReveal={(id) =>
-                      setRevealedIds((prev) => ({...prev, [id]: !prev[id]}))
-                    }
-                    copiedToken={copiedToken}
-                    onCopy={copyValue}
-                    onEdit={openEditForm}
-                    confirmDeleteId={confirmDeleteId}
-                    onRequestDelete={setConfirmDeleteId}
-                    onConfirmDelete={(id) => {
-                      onDeleteAccount(id);
-                      setConfirmDeleteId(null);
-                    }}
-                    onSelectCharacter={onSelectCharacter}
-                    onSelectAccount={onSelectAccount}
-                  />
-                )}
+                {!isCollapsed &&
+                  (groupedLayout === 'cards' ? (
+                    <AccountCardGrid
+                      accounts={group.accounts}
+                      showAllSecrets={showAllSecrets}
+                      revealedIds={revealedIds}
+                      onToggleReveal={(id) =>
+                        setRevealedIds((prev) => ({...prev, [id]: !prev[id]}))
+                      }
+                      copiedToken={copiedToken}
+                      onCopy={copyValue}
+                      onEdit={openEditForm}
+                      confirmDeleteId={confirmDeleteId}
+                      onRequestDelete={setConfirmDeleteId}
+                      onConfirmDelete={(id) => {
+                        onDeleteAccount(id);
+                        setConfirmDeleteId(null);
+                      }}
+                      onSelectCharacter={onSelectCharacter}
+                      onSelectAccount={onSelectAccount}
+                    />
+                  ) : (
+                    <AccountTable
+                      accounts={group.accounts}
+                      showEmailColumn={false}
+                      showAllSecrets={showAllSecrets}
+                      revealedIds={revealedIds}
+                      onToggleReveal={(id) =>
+                        setRevealedIds((prev) => ({...prev, [id]: !prev[id]}))
+                      }
+                      copiedToken={copiedToken}
+                      onCopy={copyValue}
+                      onEdit={openEditForm}
+                      confirmDeleteId={confirmDeleteId}
+                      onRequestDelete={setConfirmDeleteId}
+                      onConfirmDelete={(id) => {
+                        onDeleteAccount(id);
+                        setConfirmDeleteId(null);
+                      }}
+                      onSelectCharacter={onSelectCharacter}
+                      onSelectAccount={onSelectAccount}
+                    />
+                  ))}
               </section>
             );
           })}
@@ -1084,3 +1201,245 @@ function AccountTable({
     </div>
   );
 }
+
+interface AccountCardGridProps {
+  accounts: (AccountMeta & {characters: CharacterRecord[]})[];
+  showAllSecrets: boolean;
+  revealedIds: Record<string, boolean>;
+  onToggleReveal: (id: string) => void;
+  copiedToken: string | null;
+  onCopy: (token: string, val: string | null | undefined) => void;
+  onEdit: (acc: AccountMeta) => void;
+  confirmDeleteId: string | null;
+  onRequestDelete: (id: string | null) => void;
+  onConfirmDelete: (id: string) => void;
+  onSelectCharacter: (characterId: string) => void;
+  onSelectAccount: (accountId: string) => void;
+}
+
+function getBestLastAccess(
+  accountLastAccess: string | null | undefined,
+  characters: CharacterRecord[]
+): string | null {
+  let bestStr: string | null = accountLastAccess?.trim() || null;
+  let bestMs = parseFlexibleTimestamp(bestStr);
+
+  for (const ch of characters) {
+    const candidate = ch.character.last_access?.trim();
+    if (!candidate) continue;
+    const ms = parseFlexibleTimestamp(candidate);
+    if (!bestStr || (ms > 0 && ms > bestMs)) {
+      bestStr = candidate;
+      bestMs = ms;
+    }
+  }
+  return bestStr;
+}
+
+function AccountCardGrid({
+  accounts,
+  showAllSecrets,
+  revealedIds,
+  onToggleReveal,
+  copiedToken,
+  onCopy,
+  onEdit,
+  confirmDeleteId,
+  onRequestDelete,
+  onConfirmDelete,
+  onSelectCharacter,
+  onSelectAccount,
+}: AccountCardGridProps) {
+  return (
+    <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {accounts.map((acc) => {
+        const isRevealed = showAllSecrets || Boolean(revealedIds[acc.id]);
+        const isConfirmingDelete = confirmDeleteId === acc.id;
+        const resolvedLastAccess = getBestLastAccess(
+          acc.lastAccess,
+          acc.characters
+        );
+        const charCountBadge = acc.expectedCharacters
+          ? `${acc.characters.length}/${acc.expectedCharacters}`
+          : String(acc.characters.length);
+
+        return (
+          <article
+            key={acc.id}
+            className="bg-[#0B0F17] border border-[#1E293B] hover:border-slate-600 rounded-lg p-4 flex flex-col justify-between gap-4 transition-colors"
+          >
+            <div className="space-y-3">
+              {/* Card Header: Centered Account Name + Character Count Badge */}
+              <div className="relative flex items-center justify-center min-h-[26px]">
+                <div className="flex items-center gap-1.5 px-8 text-center">
+                  <h3 className="font-display text-base font-bold text-slate-100 truncate">
+                    {acc.account}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => onCopy(`card-acc-${acc.id}`, acc.account)}
+                    title="Copiar cuenta"
+                    className="text-slate-500 hover:text-amber-300 shrink-0"
+                  >
+                    {copiedToken === `card-acc-${acc.id}` ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+
+                <span
+                  title={`${acc.characters.length} personajes capturados`}
+                  className="absolute right-0 top-0.5 inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded bg-[#161F30] border border-[#283548] font-mono text-[11px] font-semibold tabular-nums text-slate-300"
+                >
+                  {charCountBadge}
+                </span>
+              </div>
+
+              {/* Two-column vertical-divider info block matching L2 account cards */}
+              <div className="text-xs space-y-1.5">
+                <div className="grid grid-cols-[118px_1fr] items-center">
+                  <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                    Fecha creación
+                  </span>
+                  <span className="pl-3 font-mono tabular-nums text-slate-200 truncate">
+                    {acc.creationDate || '—'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-[118px_1fr] items-center">
+                  <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                    Último acceso
+                  </span>
+                  <span className="pl-3 font-mono tabular-nums text-slate-200 truncate">
+                    {resolvedLastAccess || '—'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-[118px_1fr] items-center">
+                  <span className="pr-3 text-right font-semibold text-slate-300 border-r border-[#283548]">
+                    Última IP
+                  </span>
+                  <span className="pl-3 font-mono tabular-nums text-slate-200 truncate">
+                    {acc.lastIp || '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Optional Server / Notes / Characters Preview */}
+              <div className="pt-2 border-t border-[#1E293B] space-y-2 text-[11px]">
+                <div className="flex items-center justify-between gap-2 text-slate-500">
+                  <span className="truncate">
+                    {acc.server}
+                    {acc.notes ? ` · ${acc.notes}` : ''}
+                  </span>
+                  {acc.password && (
+                    <div className="inline-flex items-center gap-1.5 font-mono text-slate-300 shrink-0">
+                      <span>{isRevealed ? acc.password : '••••••'}</span>
+                      <button
+                        type="button"
+                        onClick={() => onToggleReveal(acc.id)}
+                        title={isRevealed ? 'Ocultar clave' : 'Mostrar clave'}
+                        className="text-slate-500 hover:text-slate-200"
+                      >
+                        {isRevealed ? (
+                          <EyeOff className="w-3 h-3" />
+                        ) : (
+                          <Eye className="w-3 h-3" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onCopy(`card-pwd-${acc.id}`, acc.password)}
+                        title="Copiar contraseña"
+                        className="text-slate-500 hover:text-amber-300"
+                      >
+                        {copiedToken === `card-pwd-${acc.id}` ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {acc.characters.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {acc.characters.map((char) => (
+                      <button
+                        key={char.id}
+                        type="button"
+                        onClick={() => onSelectCharacter(char.id)}
+                        className="px-1.5 py-0.5 rounded bg-[#111827] border border-[#1E293B] hover:border-amber-500/50 text-amber-300 hover:text-amber-200 font-medium truncate max-w-[140px]"
+                        title={`Abrir ${char.character.name}`}
+                      >
+                        {char.character.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-500">Sin capturas importadas</div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Actions + Full-Width "Ver cuenta" Button */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                {isConfirmingDelete ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onConfirmDelete(acc.id)}
+                      className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-medium"
+                    >
+                      Confirmar borrado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRequestDelete(null)}
+                      className="text-slate-400 hover:text-slate-200"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(acc)}
+                      className="inline-flex items-center gap-1 text-slate-400 hover:text-amber-300"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Editar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRequestDelete(acc.id)}
+                      aria-label={`Borrar credenciales de ${acc.account}`}
+                      className="inline-flex items-center gap-1 text-slate-500 hover:text-red-400"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Borrar</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onSelectAccount(acc.id)}
+                className="w-full py-2 px-3 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs text-center transition-colors"
+              >
+                Ver cuenta
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+

@@ -47,6 +47,7 @@ export default function App() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
   const [selectedClanId, setSelectedClanId] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedEmailFilter, setSelectedEmailFilter] = useState<string | null>(null);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickIconItemName, setQuickIconItemName] = useState<string | null>(null);
@@ -150,6 +151,11 @@ export default function App() {
     setActiveView('account');
   };
 
+  const handleOpenEmail = (email: string) => {
+    setSelectedEmailFilter(email);
+    setActiveView('accounts');
+  };
+
   return (
     <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex">
       <Sidebar
@@ -164,7 +170,10 @@ export default function App() {
         onNavigateSearch={() => setActiveView('search')}
         onNavigateBridge={() => setActiveView('bridge')}
         onNavigateCatalog={() => setActiveView('catalog')}
-        onNavigateAccounts={() => setActiveView('accounts')}
+        onNavigateAccounts={() => {
+          setSelectedEmailFilter(null);
+          setActiveView('accounts');
+        }}
         onNavigateProfessions={() => setActiveView('professions')}
         onNavigateDownloads={() => setActiveView('downloads')}
         onSelectCharacter={handleOpenCharacter}
@@ -223,6 +232,7 @@ export default function App() {
               db={db}
               servers={servers}
               selectedServer={selectedServer}
+              initialEmailFilter={selectedEmailFilter}
               onUpsertAccount={upsertAccount}
               onBulkUpsertAccounts={bulkUpsertAccounts}
               onDeleteAccount={deleteAccount}
@@ -245,6 +255,7 @@ export default function App() {
               onQuickEditIcon={setQuickIconItemName}
               onSelectCharacter={handleOpenCharacter}
               onSelectClan={handleOpenClan}
+              onSelectEmail={handleOpenEmail}
               onNavigateBridge={() => setActiveView('bridge')}
               onUpsertAccount={upsertAccount}
             />
