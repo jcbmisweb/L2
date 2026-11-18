@@ -34,6 +34,7 @@ export default function App() {
     setIconBaseUrl,
     upsertAccount,
     bulkUpsertAccounts,
+    applyPartialItemsImport,
     deleteAccount,
     restoreBackup,
     resetToEmpty,
@@ -105,7 +106,7 @@ export default function App() {
       return [serverLabel, 'Profesiones y familias'];
     }
     if (activeView === 'downloads') {
-      return [serverLabel, 'Descargar datos'];
+      return [serverLabel, 'Descargar y subir datos'];
     }
     if (activeView === 'account' && selectedAccountInfo) {
       return [
@@ -200,6 +201,11 @@ export default function App() {
               servers={servers}
               selectedServer={selectedServer}
               onOpenBackup={() => setBackupModalOpen(true)}
+              onBulkUpsertCatalog={bulkUpsertCatalog}
+              onSetIconBaseUrl={setIconBaseUrl}
+              onBulkUpsertAccounts={bulkUpsertAccounts}
+              onApplyPartialItemsImport={applyPartialItemsImport}
+              onRestoreBackup={restoreBackup}
             />
           ) : activeView === 'catalog' ? (
             <ItemCatalogView

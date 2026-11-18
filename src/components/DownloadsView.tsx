@@ -16,8 +16,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import {useMemo, useState} from 'react';
-import {L2Database} from '../types/l2';
+import {useMemo, useRef, useState} from 'react';
+import {ItemEntry, L2Database} from '../types/l2';
 import {
   CsvSeparator,
   downloadBlobFile,
@@ -28,6 +28,9 @@ import {
   exportItemsCsv,
   exportItemsGroupedCsv,
   filterDatabaseForExport,
+  parseAccountsFileContent,
+  parseCatalogFileContent,
+  parseItemsFileContent,
 } from '../utils/exportData';
 import {formatInt} from '../utils/storage';
 
@@ -36,6 +39,33 @@ interface DownloadsViewProps {
   servers: string[];
   selectedServer: string;
   onOpenBackup: () => void;
+  onBulkUpsertCatalog: (entries: {name: string; icon: string}[]) => void;
+  onSetIconBaseUrl: (url: string) => void;
+  onBulkUpsertAccounts: (
+    entries: {
+      server: string;
+      account: string;
+      email?: string | null;
+      password?: string | null;
+      ssn?: string | null;
+      notes?: string | null;
+      lastAccess?: string | null;
+    }[]
+  ) => void;
+  onApplyPartialItemsImport: (
+    characterBatches: {
+      server: string;
+      account: string;
+      name: string;
+      items: Omit<ItemEntry, 'id'>[];
+    }[],
+    clanBatches: {
+      server: string;
+      name: string;
+      items: Omit<ItemEntry, 'id'>[];
+    }[]
+  ) => void;
+  onRestoreBackup: (incoming: L2Database, mode: 'replace' | 'merge') => void;
 }
 
 export function DownloadsView({
@@ -43,13 +73,21 @@ export function DownloadsView({
   servers,
   selectedServer,
   onOpenBackup,
+  onBulkUpsertCatalog,
+  onSetIconBaseUrl,
+  onBulkUpsertAccounts,
+  onApplyPartialItemsImport,
+  onRestoreBackup,
 }: DownloadsViewProps) {
   const [scopeServer, setScopeServer] = useState<string>(selectedServer);
   const [scopeAccount, setScopeAccount] = useState<string>('all');
   const [separator, setSeparator] = useState<CsvSeparator>(';');
   const [includeSecrets, setIncludeSecrets] = useState<boolean>(false);
 
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<{
     title: string;
@@ -58,6 +96,12 @@ export function DownloadsView({
     mime: string;
     bom: boolean;
   } | null>(null);
+
+  const fullJsonInputRef = useRef<HTMLInputElement>(null);
+  const itemsInputRef = useRef<HTMLInputElement>(null);
+  const clansInputRef = useRef<HTMLInputElement>(null);
+  const accountsInputRef = useRef<HTMLInputElement>(null);
+  const catalogInputRef = useRef<HTMLInputElement>(null);
 
   const availableAccounts = useMemo(() => {
     const map = new Map<string, {id: string; server: string; account: string}>();
@@ -137,7 +181,10 @@ export function DownloadsView({
     label: string
   ) => {
     downloadBlobFile(filename, content, mimeType, withUtf8Bom);
-    setFeedback(`Descargado "${filename}" (${label}).`);
+    setFeedback({
+      type: 'success',
+      text: `Descargado "${filename}" (${label}).`,
+    });
   };
 
   const handleCopyText = async (token: string, content: string, label: string) => {
@@ -152,10 +199,143 @@ export function DownloadsView({
       document.body.removeChild(el);
     }
     setCopiedId(token);
-    setFeedback(`Copiado al portapapeles: ${label}.`);
+    setFeedback({
+      type: 'success',
+      text: `Copiado al portapapeles: ${label}.`,
+    });
     setTimeout(() => {
       setCopiedId((curr) => (curr === token ? null : curr));
     }, 1800);
+  };
+
+  const defaultUploadServer =
+    scopeServer !== 'all' ? scopeServer : servers[0] || 'Valakas [x10]';
+
+  const handleUploadFullJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as L2Database;
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        !Array.isArray(parsed.characters) ||
+        !Array.isArray(parsed.clans)
+      ) {
+        setFeedback({
+          type: 'error',
+          text: `El archivo "${file.name}" no tiene estructura de copia completa L2ES Vault. Si es un catálogo de iconos, súbelo en su tarjeta correspondiente.`,
+        });
+        return;
+      }
+      onRestoreBackup(parsed, 'merge');
+      const catalogCount = Object.keys(parsed.itemCatalog || {}).length;
+      setFeedback({
+        type: 'success',
+        text: `Fusionado "${file.name}": ${parsed.characters.length} personajes, ${parsed.clans.length} clanes y ${catalogCount} iconos.`,
+      });
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: `No se pudo leer el archivo JSON "${file.name}".`,
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleUploadCatalog = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = parseCatalogFileContent(text);
+      if (res.error || res.entries.length === 0) {
+        setFeedback({
+          type: 'error',
+          text: res.error || `No se encontraron iconos válidos en "${file.name}".`,
+        });
+        return;
+      }
+      if (res.iconBaseUrl) {
+        onSetIconBaseUrl(res.iconBaseUrl);
+      }
+      onBulkUpsertCatalog(res.entries);
+      setFeedback({
+        type: 'success',
+        text: `Subidos y fusionados ${formatInt(res.entries.length)} ítems al catálogo de iconos desde "${file.name}" sin tocar tus personajes ni cuentas.`,
+      });
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: `Error al procesar el archivo de iconos "${file.name}".`,
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleUploadAccounts = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = parseAccountsFileContent(text, defaultUploadServer);
+      if (res.error || res.entries.length === 0) {
+        setFeedback({
+          type: 'error',
+          text: res.error || `No se encontraron cuentas válidas en "${file.name}".`,
+        });
+        return;
+      }
+      onBulkUpsertAccounts(res.entries);
+      setFeedback({
+        type: 'success',
+        text: `Subidas y actualizadas ${formatInt(res.entries.length)} cuentas desde "${file.name}".`,
+      });
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: `Error al procesar el archivo de cuentas "${file.name}".`,
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleUploadItems = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = parseItemsFileContent(text, defaultUploadServer);
+      if (
+        res.error ||
+        (res.characterBatches.length === 0 && res.clanBatches.length === 0)
+      ) {
+        setFeedback({
+          type: 'error',
+          text: res.error || `No se encontraron ítems válidos en "${file.name}".`,
+        });
+        return;
+      }
+      onApplyPartialItemsImport(res.characterBatches, res.clanBatches);
+      const totalItems =
+        res.characterBatches.reduce((sum, b) => sum + b.items.length, 0) +
+        res.clanBatches.reduce((sum, b) => sum + b.items.length, 0);
+      setFeedback({
+        type: 'success',
+        text: `Importados ${formatInt(totalItems)} ítems desde "${file.name}" (${res.characterBatches.length} personajes, ${res.clanBatches.length} clanes actualizados).`,
+      });
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: `Error al procesar el archivo de ítems "${file.name}".`,
+      });
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const triggerJsonFull = (previewOnly = false) => {
@@ -336,10 +516,10 @@ export function DownloadsView({
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-xl font-bold tracking-tight text-slate-100">
-              Descargar datos de la aplicación
+              Descargar y subir datos
             </h1>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Exporta toda tu información o filtra por servidor y cuenta. Los archivos CSV incluyen codificación UTF-8 preparada para abrir directamente en Excel o Google Sheets.
+              Exporta toda tu información o sube archivos individuales (solo el catálogo de iconos de ítems, inventarios en CSV, cuentas o respaldo completo) sin sobrescribir el resto.
             </p>
           </div>
 
@@ -484,13 +664,23 @@ export function DownloadsView({
         </div>
 
         {feedback && (
-          <div className="bg-emerald-950/35 border border-emerald-800/60 rounded-md px-3.5 py-2 text-xs text-emerald-300 flex items-center justify-between gap-2">
-            <span>{feedback}</span>
+          <div
+            className={`rounded-md px-3.5 py-2 text-xs flex items-center justify-between gap-2 border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-950/35 border-emerald-800/60 text-emerald-300'
+                : 'bg-red-950/40 border-red-800/60 text-red-300'
+            }`}
+          >
+            <span>{feedback.text}</span>
             <button
               type="button"
               onClick={() => setFeedback(null)}
               aria-label="Cerrar aviso"
-              className="text-emerald-400 hover:text-emerald-200"
+              className={
+                feedback.type === 'success'
+                  ? 'text-emerald-400 hover:text-emerald-200'
+                  : 'text-red-400 hover:text-red-200'
+              }
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -508,11 +698,19 @@ export function DownloadsView({
             </h2>
           </div>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Guarda toda la estructura intacta (personajes, subclases, slots de equipo, almacenes de clan, cuentas y catálogo de iconos) para moverla a otro ordenador o restaurarla más adelante.
+            Guarda toda la estructura intacta (personajes, subclases, slots de equipo, almacenes de clan, cuentas y catálogo de iconos) para moverla a otro ordenador o volver a subirla.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <input
+            ref={fullJsonInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleUploadFullJson}
+            className="hidden"
+          />
+
           <button
             type="button"
             onClick={() => triggerJsonFull(true)}
@@ -549,6 +747,15 @@ export function DownloadsView({
 
           <button
             type="button"
+            onClick={() => fullJsonInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#161F30] hover:bg-[#1E293B] border border-[#283548] text-xs text-slate-200 whitespace-nowrap shrink-0"
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-400" />
+            <span>Subir .json</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => triggerJsonFull(false)}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs whitespace-nowrap shrink-0"
           >
@@ -580,6 +787,13 @@ export function DownloadsView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={itemsInputRef}
+              type="file"
+              accept=".csv,.json,.txt,text/csv,application/json"
+              onChange={handleUploadItems}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => triggerItemsDetailed(false)}
@@ -587,6 +801,14 @@ export function DownloadsView({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Descargar CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => itemsInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#161F30] hover:bg-[#1E293B] border border-[#283548] text-xs text-slate-200 whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Subir CSV / JSON</span>
             </button>
             <button
               type="button"
@@ -700,6 +922,13 @@ export function DownloadsView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={accountsInputRef}
+              type="file"
+              accept=".csv,.json,.txt,text/csv,application/json"
+              onChange={handleUploadAccounts}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => triggerAccounts(false)}
@@ -707,6 +936,14 @@ export function DownloadsView({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Descargar CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => accountsInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#161F30] hover:bg-[#1E293B] border border-[#283548] text-xs text-slate-200 whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Subir CSV / JSON</span>
             </button>
             <button
               type="button"
@@ -739,6 +976,13 @@ export function DownloadsView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={clansInputRef}
+              type="file"
+              accept=".csv,.json,.txt,text/csv,application/json"
+              onChange={handleUploadItems}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => triggerClans(false)}
@@ -746,6 +990,14 @@ export function DownloadsView({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Descargar CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => clansInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#161F30] hover:bg-[#1E293B] border border-[#283548] text-xs text-slate-200 whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Subir CSV</span>
             </button>
             <button
               type="button"
@@ -773,11 +1025,18 @@ export function DownloadsView({
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Descarga tu catálogo de nombres e imágenes (en CSV para hoja de cálculo o JSON para compartirlo).
+              Descarga o sube únicamente tu catálogo de nombres e imágenes (en CSV o JSON) sin modificar personajes ni cuentas.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={catalogInputRef}
+              type="file"
+              accept=".json,.csv,.txt,application/json,text/csv"
+              onChange={handleUploadCatalog}
+              className="hidden"
+            />
             <button
               type="button"
               onClick={() => triggerCatalogCsv(false)}
@@ -793,6 +1052,14 @@ export function DownloadsView({
             >
               <FileJson className="w-3.5 h-3.5 text-amber-400" />
               <span>JSON</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => catalogInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[#161F30] hover:bg-[#1E293B] border border-amber-500/40 text-xs text-amber-300 whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Subir (.json / .csv)</span>
             </button>
             <button
               type="button"

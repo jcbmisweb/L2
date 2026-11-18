@@ -262,7 +262,7 @@ export function Sidebar({
           }`}
         >
           <Download className="w-4 h-4 shrink-0" />
-          <span>Descargar datos</span>
+          <span>Descargar / Subir datos</span>
         </button>
 
         <button

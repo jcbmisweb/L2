@@ -1,4 +1,9 @@
-import {L2Database} from '../types/l2';
+import {
+  EquipmentSlot,
+  ItemEntry,
+  ItemLocation,
+  L2Database,
+} from '../types/l2';
 import {
   LOCATION_LABELS,
   normalizeItemKey,
@@ -495,3 +500,666 @@ export function exportCatalogCsv(
     rowCount: rows.length,
   };
 }
+
+/* ========================== PARTIAL FILE PARSERS ========================== */
+
+function detectCsvSeparator(cleanText: string): CsvSeparator {
+  const firstLine = cleanText.split(/\r?\n/).find((l) => l.trim().length > 0) || '';
+  let semicolons = 0;
+  let commas = 0;
+  let inQuotes = false;
+  for (let i = 0; i < firstLine.length; i++) {
+    const ch = firstLine[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === ';') semicolons++;
+      if (ch === ',') commas++;
+    }
+  }
+  return semicolons >= commas ? ';' : ',';
+}
+
+export function parseCsvText(rawText: string): {
+  rows: string[][];
+  separator: CsvSeparator;
+} {
+  const text = rawText.replace(/^\uFEFF/, '');
+  const separator = detectCsvSeparator(text);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === separator) {
+      row.push(field.trim());
+      field = '';
+    } else if (ch === '\r') {
+      if (text[i + 1] === '\n') i++;
+      row.push(field.trim());
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      field = '';
+    } else if (ch === '\n') {
+      row.push(field.trim());
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.trim());
+    if (row.some((cell) => cell.length > 0)) rows.push(row);
+  }
+
+  return {rows, separator};
+}
+
+function normHeader(h: string): string {
+  return h
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+export function parseCatalogFileContent(rawText: string): {
+  entries: {name: string; icon: string}[];
+  iconBaseUrl?: string;
+  error?: string;
+} {
+  const clean = rawText.replace(/^\uFEFF/, '').trim();
+  if (!clean) {
+    return {entries: [], error: 'El archivo está vacío.'};
+  }
+
+  // 1. JSON format (supports exported catalog JSON, full DB JSON, array, or map)
+  if (clean.startsWith('{') || clean.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(clean) as unknown;
+      const entries: {name: string; icon: string}[] = [];
+      let iconBaseUrl: string | undefined;
+
+      const pushIfValid = (name: unknown, icon: unknown) => {
+        if (typeof name !== 'string' || typeof icon !== 'string') return;
+        const n = name.trim();
+        const ic = icon.trim();
+        if (n && ic) entries.push({name: n, icon: ic});
+      };
+
+      if (Array.isArray(parsed)) {
+        parsed.forEach((row) => {
+          if (!row || typeof row !== 'object') return;
+          const rec = row as Record<string, unknown>;
+          pushIfValid(
+            rec.name ?? rec.objeto ?? rec.item,
+            rec.icon ?? rec.url ?? rec.image ?? rec.img
+          );
+        });
+      } else if (parsed && typeof parsed === 'object') {
+        const obj = parsed as Record<string, unknown>;
+        if (typeof obj.iconBaseUrl === 'string' && obj.iconBaseUrl.trim()) {
+          iconBaseUrl = obj.iconBaseUrl.trim();
+        }
+        const catalogSource =
+          obj.itemCatalog && typeof obj.itemCatalog === 'object'
+            ? (obj.itemCatalog as Record<string, unknown>)
+            : obj;
+
+        Object.entries(catalogSource).forEach(([key, val]) => {
+          if (key === 'iconBaseUrl' || key === 'version' || key === 'updatedAt') return;
+          if (typeof val === 'string') {
+            pushIfValid(key, val);
+          } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+            const rec = val as Record<string, unknown>;
+            pushIfValid(
+              typeof rec.name === 'string' ? rec.name : key,
+              rec.icon ?? rec.url ?? rec.image
+            );
+          }
+        });
+      }
+
+      if (entries.length === 0) {
+        return {
+          entries: [],
+          iconBaseUrl,
+          error: 'El archivo JSON no contiene ítems con icono válidos.',
+        };
+      }
+      return {entries, iconBaseUrl};
+    } catch {
+      return {
+        entries: [],
+        error: 'No se pudo leer el archivo JSON de catálogo. Verifica la sintaxis.',
+      };
+    }
+  }
+
+  // 2. CSV / Text format
+  const {rows} = parseCsvText(clean);
+  if (rows.length === 0) {
+    return {entries: [], error: 'No se encontraron filas válidas en el archivo.'};
+  }
+
+  const firstHeaders = rows[0].map(normHeader);
+  const looksLikeHeader =
+    firstHeaders.some((h) => h === 'objeto' || h === 'item' || h === 'name' || h === 'nombre') &&
+    firstHeaders.some(
+      (h) =>
+        h.includes('icono') ||
+        h.includes('icon') ||
+        h.includes('archivo') ||
+        h.includes('url') ||
+        h.includes('imagen')
+    );
+
+  const entries: {name: string; icon: string}[] = [];
+
+  if (looksLikeHeader) {
+    const nameIdx = firstHeaders.findIndex(
+      (h) => h === 'objeto' || h === 'name' || h === 'item' || h === 'nombre'
+    );
+    const relIconIdx = firstHeaders.findIndex(
+      (h) => h.includes('archivo') || h === 'icono' || h === 'icon'
+    );
+    const urlIdx = firstHeaders.findIndex((h) => h.includes('url'));
+
+    for (let r = 1; r < rows.length; r++) {
+      const cells = rows[r];
+      const name = (nameIdx >= 0 ? cells[nameIdx] : cells[0])?.trim() || '';
+      const relIcon = relIconIdx >= 0 ? cells[relIconIdx]?.trim() || '' : '';
+      const fullUrl = urlIdx >= 0 ? cells[urlIdx]?.trim() || '' : '';
+      const fallbackSecond = cells[1]?.trim() || '';
+      const icon = relIcon || fullUrl || (relIconIdx < 0 && urlIdx < 0 ? fallbackSecond : '');
+      if (name && icon) {
+        entries.push({name, icon});
+      }
+    }
+  } else {
+    rows.forEach((cells) => {
+      if (cells.length >= 2) {
+        const name = cells[0]?.trim();
+        const icon = cells[1]?.trim() || cells[2]?.trim() || '';
+        if (name && icon) entries.push({name, icon});
+      } else if (cells.length === 1 && cells[0].includes('=')) {
+        const eqIdx = cells[0].indexOf('=');
+        const name = cells[0].slice(0, eqIdx).trim();
+        const icon = cells[0].slice(eqIdx + 1).trim();
+        if (name && icon) entries.push({name, icon});
+      }
+    });
+  }
+
+  if (entries.length === 0) {
+    return {
+      entries: [],
+      error:
+        'No se encontraron filas con nombre de objeto e icono. Usa el formato CSV/JSON descargado desde aquí.',
+    };
+  }
+
+  return {entries};
+}
+
+export function parseAccountsFileContent(
+  rawText: string,
+  defaultServer: string
+): {
+  entries: {
+    server: string;
+    account: string;
+    email?: string | null;
+    password?: string | null;
+    ssn?: string | null;
+    notes?: string | null;
+    lastAccess?: string | null;
+  }[];
+  error?: string;
+} {
+  const clean = rawText.replace(/^\uFEFF/, '').trim();
+  if (!clean) {
+    return {entries: [], error: 'El archivo está vacío.'};
+  }
+
+  const sanitizeSecret = (val: string | null | undefined): string | undefined => {
+    if (!val) return undefined;
+    const t = val.trim();
+    if (!t || t === '[OCULTA]' || t === '[OCULTO]') return undefined;
+    return t;
+  };
+
+  if (clean.startsWith('{') || clean.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(clean) as unknown;
+      const list = Array.isArray(parsed)
+        ? parsed
+        : parsed &&
+          typeof parsed === 'object' &&
+          Array.isArray((parsed as Record<string, unknown>).accounts)
+        ? ((parsed as Record<string, unknown>).accounts as unknown[])
+        : null;
+
+      if (!list) {
+        return {entries: [], error: 'JSON de cuentas no válido.'};
+      }
+
+      const entries: {
+        server: string;
+        account: string;
+        email?: string | null;
+        password?: string | null;
+        ssn?: string | null;
+        notes?: string | null;
+        lastAccess?: string | null;
+      }[] = [];
+
+      list.forEach((raw) => {
+        if (!raw || typeof raw !== 'object') return;
+        const r = raw as Record<string, unknown>;
+        const account = typeof r.account === 'string' ? r.account.trim() : '';
+        const server =
+          typeof r.server === 'string' && r.server.trim()
+            ? r.server.trim()
+            : defaultServer;
+        if (!account) return;
+        entries.push({
+          server,
+          account,
+          email: typeof r.email === 'string' ? r.email.trim() || undefined : undefined,
+          password: sanitizeSecret(typeof r.password === 'string' ? r.password : undefined),
+          ssn: sanitizeSecret(typeof r.ssn === 'string' ? r.ssn : undefined),
+          notes: typeof r.notes === 'string' ? r.notes.trim() || undefined : undefined,
+          lastAccess:
+            typeof r.lastAccess === 'string' ? r.lastAccess.trim() || undefined : undefined,
+        });
+      });
+
+      if (entries.length === 0) {
+        return {entries: [], error: 'No se encontraron cuentas válidas en el JSON.'};
+      }
+      return {entries};
+    } catch {
+      return {entries: [], error: 'No se pudo leer el JSON de cuentas.'};
+    }
+  }
+
+  const {rows} = parseCsvText(clean);
+  if (rows.length === 0) {
+    return {entries: [], error: 'No se encontraron filas en el archivo CSV.'};
+  }
+
+  const firstHeaders = rows[0].map(normHeader);
+  const hasHeader =
+    firstHeaders.includes('cuenta') ||
+    firstHeaders.includes('account') ||
+    firstHeaders.includes('correo') ||
+    firstHeaders.includes('servidor');
+
+  const entries: {
+    server: string;
+    account: string;
+    email?: string | null;
+    password?: string | null;
+    ssn?: string | null;
+    notes?: string | null;
+    lastAccess?: string | null;
+  }[] = [];
+
+  if (hasHeader) {
+    const idxServer = firstHeaders.findIndex((h) => h === 'servidor' || h === 'server');
+    const idxAccount = firstHeaders.findIndex((h) => h === 'cuenta' || h === 'account');
+    const idxEmail = firstHeaders.findIndex(
+      (h) => h === 'correo' || h === 'email' || h === 'mail'
+    );
+    const idxPass = firstHeaders.findIndex(
+      (h) => h === 'contrasena' || h === 'password' || h === 'clave'
+    );
+    const idxSsn = firstHeaders.findIndex((h) => h === 'ssn');
+    const idxLastAccess = firstHeaders.findIndex(
+      (h) => h === 'ultimo acceso' || h === 'lastaccess' || h === 'last_access'
+    );
+    const idxNotes = firstHeaders.findIndex((h) => h === 'notas' || h === 'notes');
+
+    for (let r = 1; r < rows.length; r++) {
+      const c = rows[r];
+      const account = (idxAccount >= 0 ? c[idxAccount] : c[1])?.trim() || '';
+      if (!account) continue;
+      const server =
+        (idxServer >= 0 ? c[idxServer] : '')?.trim() || defaultServer;
+      entries.push({
+        server,
+        account,
+        email: idxEmail >= 0 ? c[idxEmail]?.trim() || undefined : undefined,
+        password: sanitizeSecret(idxPass >= 0 ? c[idxPass] : undefined),
+        ssn: sanitizeSecret(idxSsn >= 0 ? c[idxSsn] : undefined),
+        lastAccess:
+          idxLastAccess >= 0 ? c[idxLastAccess]?.trim() || undefined : undefined,
+        notes: idxNotes >= 0 ? c[idxNotes]?.trim() || undefined : undefined,
+      });
+    }
+  } else {
+    rows.forEach((c) => {
+      const account = c[0]?.trim();
+      if (!account) return;
+      entries.push({
+        server: defaultServer,
+        account,
+        password: sanitizeSecret(c[1]),
+        email: c[2]?.trim() || undefined,
+        ssn: sanitizeSecret(c[3]),
+        notes: c[4]?.trim() || undefined,
+      });
+    });
+  }
+
+  if (entries.length === 0) {
+    return {entries: [], error: 'No se encontraron cuentas válidas para importar.'};
+  }
+
+  return {entries};
+}
+
+const VALID_SLOTS = new Set<EquipmentSlot>([
+  'hair_1',
+  'helmet',
+  'hair_2',
+  'gloves',
+  'chest',
+  'boots',
+  'cloak',
+  'legs',
+  'belt',
+  'rhand',
+  'lhand',
+  'earring_1',
+  'earring_2',
+  'shirt',
+  'ring_1',
+  'ring_2',
+  'necklace',
+]);
+
+function mapCsvLocation(raw: string): ItemLocation {
+  const n = normHeader(raw);
+  if (n.includes('equip')) return 'equipped';
+  if (n.includes('invent')) return 'inventory';
+  if (n.includes('clan')) return 'clan_warehouse';
+  if (n.includes('almac') || n.includes('ware')) return 'warehouse';
+  if (n.includes('corr') || n.includes('mail')) return 'mail';
+  if (n.includes('masc') || n.includes('pet')) return 'pets';
+  if (n.includes('mis') || n.includes('quest')) return 'quests';
+  return 'inventory';
+}
+
+function parseCsvQuantity(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const digitsOnly = trimmed.replace(/[.,\s]/g, '');
+  if (!/^-?\d+$/.test(digitsOnly)) return null;
+  const num = Number(digitsOnly);
+  return Number.isFinite(num) ? num : null;
+}
+
+export interface PartialItemsCharacterBatch {
+  server: string;
+  account: string;
+  name: string;
+  items: Omit<ItemEntry, 'id'>[];
+}
+
+export interface PartialItemsClanBatch {
+  server: string;
+  name: string;
+  items: Omit<ItemEntry, 'id'>[];
+}
+
+export function parseItemsFileContent(
+  rawText: string,
+  defaultServer: string
+): {
+  characterBatches: PartialItemsCharacterBatch[];
+  clanBatches: PartialItemsClanBatch[];
+  error?: string;
+} {
+  const clean = rawText.replace(/^\uFEFF/, '').trim();
+  if (!clean) {
+    return {characterBatches: [], clanBatches: [], error: 'El archivo está vacío.'};
+  }
+
+  if (clean.startsWith('{') || clean.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(clean) as Record<string, unknown>;
+      const charBatches: PartialItemsCharacterBatch[] = [];
+      const clanBatches: PartialItemsClanBatch[] = [];
+
+      if (Array.isArray(parsed.characters)) {
+        parsed.characters.forEach((raw) => {
+          if (!raw || typeof raw !== 'object') return;
+          const c = raw as Record<string, unknown>;
+          const charInfo = (c.character || {}) as Record<string, unknown>;
+          const name =
+            typeof charInfo.name === 'string'
+              ? charInfo.name.trim()
+              : typeof c.name === 'string'
+              ? c.name.trim()
+              : '';
+          if (!name) return;
+          const server =
+            typeof c.server === 'string' && c.server.trim()
+              ? c.server.trim()
+              : defaultServer;
+          const account =
+            typeof c.account === 'string' && c.account.trim()
+              ? c.account.trim()
+              : 'Sin cuenta';
+          const items = Array.isArray(c.items)
+            ? (c.items as Record<string, unknown>[])
+                .filter((it) => typeof it?.name === 'string' && it.name.trim())
+                .map((it) => ({
+                  name: String(it.name).trim(),
+                  quantity:
+                    typeof it.quantity === 'number' && Number.isFinite(it.quantity)
+                      ? it.quantity
+                      : null,
+                  location: mapCsvLocation(String(it.location || 'inventory')),
+                  slot:
+                    typeof it.slot === 'string' &&
+                    VALID_SLOTS.has(it.slot.trim() as EquipmentSlot)
+                      ? (it.slot.trim() as EquipmentSlot)
+                      : null,
+                  tags: Array.isArray(it.tags)
+                    ? it.tags.map((t) => String(t).trim()).filter(Boolean)
+                    : [],
+                  uncertain: Boolean(it.uncertain),
+                }))
+            : [];
+          charBatches.push({server, account, name, items});
+        });
+      }
+
+      if (Array.isArray(parsed.clans)) {
+        parsed.clans.forEach((raw) => {
+          if (!raw || typeof raw !== 'object') return;
+          const cl = raw as Record<string, unknown>;
+          const name = typeof cl.name === 'string' ? cl.name.trim() : '';
+          if (!name) return;
+          const server =
+            typeof cl.server === 'string' && cl.server.trim()
+              ? cl.server.trim()
+              : defaultServer;
+          const items = Array.isArray(cl.items)
+            ? (cl.items as Record<string, unknown>[])
+                .filter((it) => typeof it?.name === 'string' && it.name.trim())
+                .map((it) => ({
+                  name: String(it.name).trim(),
+                  quantity:
+                    typeof it.quantity === 'number' && Number.isFinite(it.quantity)
+                      ? it.quantity
+                      : null,
+                  location: 'clan_warehouse' as ItemLocation,
+                  slot: null,
+                  tags: Array.isArray(it.tags)
+                    ? it.tags.map((t) => String(t).trim()).filter(Boolean)
+                    : [],
+                  uncertain: Boolean(it.uncertain),
+                }))
+            : [];
+          clanBatches.push({server, name, items});
+        });
+      }
+
+      if (charBatches.length === 0 && clanBatches.length === 0) {
+        return {
+          characterBatches: [],
+          clanBatches: [],
+          error: 'El JSON no contiene personajes o clanes con ítems.',
+        };
+      }
+      return {characterBatches: charBatches, clanBatches};
+    } catch {
+      return {
+        characterBatches: [],
+        clanBatches: [],
+        error: 'No se pudo leer el archivo JSON de ítems.',
+      };
+    }
+  }
+
+  const {rows} = parseCsvText(clean);
+  if (rows.length < 2) {
+    return {
+      characterBatches: [],
+      clanBatches: [],
+      error: 'El archivo CSV no contiene filas de datos.',
+    };
+  }
+
+  const headers = rows[0].map(normHeader);
+  const idxServer = headers.findIndex((h) => h === 'servidor' || h === 'server');
+  const idxOrigin = headers.findIndex((h) => h === 'origen');
+  const idxAccount = headers.findIndex((h) => h === 'cuenta' || h === 'account');
+  const idxOwner = headers.findIndex(
+    (h) =>
+      h === 'personaje o clan' ||
+      h === 'personaje' ||
+      h === 'clan'
+  );
+  const idxClan = headers.findIndex((h) => h === 'clan');
+  const idxSection = headers.findIndex((h) => h === 'seccion' || h === 'ubicacion');
+  const idxSlot = headers.findIndex((h) => h === 'slot');
+  const idxItem = headers.findIndex((h) => h === 'objeto' || h === 'item' || h === 'name');
+  const idxTags = headers.findIndex((h) => h === 'etiquetas' || h === 'tags');
+  const idxQty = headers.findIndex((h) => h === 'cantidad' || h === 'qty');
+  const idxUncertain = headers.findIndex((h) => h === 'revisar' || h === 'uncertain');
+
+  if (idxItem < 0 || (idxOwner < 0 && idxClan < 0)) {
+    return {
+      characterBatches: [],
+      clanBatches: [],
+      error:
+        'Columnas no reconocidas. Sube el CSV de "Inventario completo (detallado)" o "Almacenes de clan".',
+    };
+  }
+
+  const charMap = new Map<string, PartialItemsCharacterBatch>();
+  const clanMap = new Map<string, PartialItemsClanBatch>();
+
+  for (let r = 1; r < rows.length; r++) {
+    const c = rows[r];
+    const server = (idxServer >= 0 ? c[idxServer] : '')?.trim() || defaultServer;
+    const itemName = c[idxItem]?.trim() || '';
+    const isClanOnlyCsv = idxOrigin < 0 && idxClan >= 0;
+    const originNorm = idxOrigin >= 0 ? normHeader(c[idxOrigin] || '') : '';
+    const isClanRow = isClanOnlyCsv || originNorm.includes('clan');
+
+    const tags =
+      idxTags >= 0 && c[idxTags]
+        ? c[idxTags]
+            .split('|')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [];
+    const quantity = parseCsvQuantity(idxQty >= 0 ? c[idxQty] : undefined);
+    const uncertainRaw = idxUncertain >= 0 ? normHeader(c[idxUncertain] || '') : '';
+    const uncertain =
+      uncertainRaw === 'si' || uncertainRaw === 'true' || uncertainRaw === '1';
+
+    if (isClanRow) {
+      const clanName =
+        (idxClan >= 0 ? c[idxClan] : idxOwner >= 0 ? c[idxOwner] : '')?.trim() || '';
+      if (!clanName) continue;
+      const key = `${server}::${clanName.toLowerCase()}`;
+      if (!clanMap.has(key)) {
+        clanMap.set(key, {server, name: clanName, items: []});
+      }
+      if (itemName && itemName !== '(Sin objetos)') {
+        clanMap.get(key)!.items.push({
+          name: itemName,
+          quantity,
+          location: 'clan_warehouse',
+          slot: null,
+          tags,
+          uncertain,
+        });
+      }
+    } else {
+      const charName = (idxOwner >= 0 ? c[idxOwner] : '')?.trim() || '';
+      if (!charName || !itemName) continue;
+      const account = (idxAccount >= 0 ? c[idxAccount] : '')?.trim() || 'Sin cuenta';
+      const key = `${server}::${account.toLowerCase()}::${charName.toLowerCase()}`;
+      if (!charMap.has(key)) {
+        charMap.set(key, {server, account, name: charName, items: []});
+      }
+      const rawSlot = idxSlot >= 0 ? c[idxSlot]?.trim() || '' : '';
+      const slot = VALID_SLOTS.has(rawSlot as EquipmentSlot)
+        ? (rawSlot as EquipmentSlot)
+        : null;
+      const location = mapCsvLocation(idxSection >= 0 ? c[idxSection] || '' : 'inventory');
+      charMap.get(key)!.items.push({
+        name: itemName,
+        quantity,
+        location,
+        slot,
+        tags,
+        uncertain,
+      });
+    }
+  }
+
+  const characterBatches = Array.from(charMap.values());
+  const clanBatches = Array.from(clanMap.values());
+
+  if (characterBatches.length === 0 && clanBatches.length === 0) {
+    return {
+      characterBatches: [],
+      clanBatches: [],
+      error: 'No se encontraron ítems válidos para importar.',
+    };
+  }
+
+  return {characterBatches, clanBatches};
+}
+

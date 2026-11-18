@@ -602,6 +602,8 @@ export function useL2Database() {
         email?: string | null;
         password?: string | null;
         ssn?: string | null;
+        notes?: string | null;
+        lastAccess?: string | null;
       }[]
     ) => {
       if (entries.length === 0) return;
@@ -630,12 +632,137 @@ export function useL2Database() {
               ? entry.password.trim()
               : existing?.password ?? null,
             ssn: entry.ssn?.trim() ? entry.ssn.trim() : existing?.ssn ?? null,
+            notes: entry.notes?.trim()
+              ? entry.notes.trim()
+              : existing?.notes ?? null,
+            lastAccess: entry.lastAccess?.trim()
+              ? entry.lastAccess.trim()
+              : existing?.lastAccess ?? null,
           });
         });
 
         return {
           ...prev,
           accounts: Array.from(map.values()),
+          updatedAt: now,
+        };
+      });
+    },
+    []
+  );
+
+  const applyPartialItemsImport = useCallback(
+    (
+      characterBatches: {
+        server: string;
+        account: string;
+        name: string;
+        items: Omit<ItemEntry, 'id'>[];
+      }[],
+      clanBatches: {
+        server: string;
+        name: string;
+        items: Omit<ItemEntry, 'id'>[];
+      }[]
+    ) => {
+      if (characterBatches.length === 0 && clanBatches.length === 0) return;
+      const now = new Date().toISOString();
+
+      const buildItemEntries = (rawItems: Omit<ItemEntry, 'id'>[]): ItemEntry[] =>
+        rawItems.map((it, idx) => ({
+          ...it,
+          id: `item-${Date.now().toString(36)}-${idx}-${Math.random()
+            .toString(36)
+            .slice(2, 6)}`,
+        }));
+
+      setDb((prev) => {
+        const nextChars = [...prev.characters];
+        const nextClans = [...prev.clans];
+
+        characterBatches.forEach((batch) => {
+          const id = makeCharacterId(batch.server, batch.account, batch.name);
+          const existingIdx = nextChars.findIndex(
+            (c) =>
+              c.id === id ||
+              (c.server.toLowerCase() === batch.server.toLowerCase() &&
+                c.account.toLowerCase() === batch.account.toLowerCase() &&
+                c.character.name.toLowerCase() === batch.name.toLowerCase())
+          );
+
+          const freshItems = buildItemEntries(batch.items);
+
+          if (existingIdx >= 0) {
+            nextChars[existingIdx] = {
+              ...nextChars[existingIdx],
+              status: 'captured',
+              items: freshItems,
+              updatedAt: now,
+            };
+          } else {
+            nextChars.push({
+              id,
+              server: batch.server,
+              account: batch.account,
+              clan: null,
+              status: 'captured',
+              character: {
+                name: batch.name,
+                race: null,
+                class: null,
+                level: null,
+                level_progress_pct: null,
+                hp: null,
+                mp: null,
+                sp: null,
+                hours_played: null,
+                pvp: null,
+                pk: null,
+                karma: null,
+                noble: null,
+                hero: null,
+                online: null,
+                location: null,
+                last_access: null,
+              },
+              items: freshItems,
+              updatedAt: now,
+            });
+          }
+        });
+
+        clanBatches.forEach((batch) => {
+          const id = makeClanId(batch.server, batch.name);
+          const existingIdx = nextClans.findIndex(
+            (cl) =>
+              cl.id === id ||
+              (cl.server.toLowerCase() === batch.server.toLowerCase() &&
+                cl.name.toLowerCase() === batch.name.toLowerCase())
+          );
+
+          const freshItems = buildItemEntries(batch.items);
+
+          if (existingIdx >= 0) {
+            nextClans[existingIdx] = {
+              ...nextClans[existingIdx],
+              items: freshItems,
+              updatedAt: now,
+            };
+          } else {
+            nextClans.push({
+              id,
+              server: batch.server,
+              name: batch.name,
+              items: freshItems,
+              updatedAt: now,
+            });
+          }
+        });
+
+        return {
+          ...prev,
+          characters: nextChars,
+          clans: nextClans,
           updatedAt: now,
         };
       });
@@ -742,6 +869,7 @@ export function useL2Database() {
     setIconBaseUrl,
     upsertAccount,
     bulkUpsertAccounts,
+    applyPartialItemsImport,
     deleteAccount,
     restoreBackup,
     resetToEmpty,
