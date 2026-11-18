@@ -7,6 +7,7 @@ import {
   normalizeIconInput,
   normalizeItemKey,
   resolveItemIconUrl,
+  stripItemEnchantPrefix,
 } from '../utils/storage';
 
 interface QuickIconModalProps {
@@ -70,12 +71,13 @@ export function QuickIconModal({
 
   if (!itemName) return null;
 
+  const baseItemName = stripItemEnchantPrefix(itemName);
   const base = iconBaseUrl || DEFAULT_ICON_BASE_URL;
   const previewUrl = resolveItemIconUrl(iconInput, base);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(itemName, iconInput);
+    onSave(baseItemName, iconInput);
     onClose();
   };
 
@@ -122,7 +124,7 @@ export function QuickIconModal({
 
             <div className="min-w-0">
               <div className="font-medium text-sm text-slate-100 truncate">
-                {itemName}
+                {baseItemName}
               </div>
               <div className="font-mono text-[11px] text-slate-400 truncate mt-0.5">
                 {previewUrl || 'Sin imagen asignada'}
@@ -183,7 +185,7 @@ export function QuickIconModal({
               <button
                 type="button"
                 onClick={() => {
-                  onSave(itemName, '');
+                  onSave(baseItemName, '');
                   onClose();
                 }}
                 className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-slate-400 hover:text-amber-300"

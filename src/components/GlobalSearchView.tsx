@@ -15,6 +15,8 @@ import {
   LOCATION_LABELS,
   formatAdenaShort,
   formatInt,
+  normalizeItemKey,
+  stripItemEnchantPrefix,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
 
@@ -202,11 +204,12 @@ export function GlobalSearchView({
 
     filteredRows.forEach((row) => {
       const sortedTags = row.item.tags.slice().sort();
-      const key = `${row.item.name.toLowerCase()}::${sortedTags.join('|')}`;
+      const baseName = stripItemEnchantPrefix(row.item.name);
+      const key = `${normalizeItemKey(row.item.name)}::${sortedTags.join('|')}`;
       if (!map.has(key)) {
         map.set(key, {
           key,
-          name: row.item.name,
+          name: baseName,
           tags: row.item.tags,
           personalTotal: 0,
           clanTotal: 0,
@@ -880,6 +883,11 @@ function FragmentGroupRow({
                                   Miembros vinculados: {row.clanLinkedMembers.join(', ')}
                                 </div>
                               )}
+                            </div>
+                          )}
+                          {row.item.name !== group.name && (
+                            <div className="text-[11px] font-mono text-amber-300/90 mt-0.5">
+                              {row.item.name}
                             </div>
                           )}
                           {isEditing && (

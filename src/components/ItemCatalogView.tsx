@@ -17,6 +17,7 @@ import {
   formatInt,
   normalizeIconInput,
   normalizeItemKey,
+  stripItemEnchantPrefix,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
 
@@ -91,14 +92,14 @@ export function ItemCatalogView({
       location: ItemLocation,
       quantity: number | null
     ) => {
-      const cleanName = itemName.trim();
+      const cleanName = stripItemEnchantPrefix(itemName);
       if (!cleanName) return;
       const key = normalizeItemKey(cleanName);
       if (!map.has(key)) {
         const cat = db.itemCatalog?.[key];
         map.set(key, {
           key,
-          name: cat?.name || cleanName,
+          name: stripItemEnchantPrefix(cat?.name || cleanName),
           icon: cat?.icon || '',
           owners: [],
         });
@@ -159,17 +160,22 @@ export function ItemCatalogView({
     });
 
     Object.values(db.itemCatalog || {}).forEach((entry) => {
-      if (!map.has(entry.key)) {
-        map.set(entry.key, {
-          key: entry.key,
-          name: entry.name,
+      const cleanEntryName = stripItemEnchantPrefix(entry.name);
+      if (!cleanEntryName) return;
+      const cleanKey = normalizeItemKey(cleanEntryName);
+      if (!map.has(cleanKey)) {
+        map.set(cleanKey, {
+          key: cleanKey,
+          name: cleanEntryName,
           icon: entry.icon,
           owners: [],
         });
-        ownerMaps.set(entry.key, new Map());
+        ownerMaps.set(cleanKey, new Map());
       } else {
-        const existing = map.get(entry.key)!;
-        existing.icon = entry.icon;
+        const existing = map.get(cleanKey)!;
+        if (!existing.icon && entry.icon) {
+          existing.icon = entry.icon;
+        }
       }
     });
 

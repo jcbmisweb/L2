@@ -23,8 +23,10 @@ import {
   DEFAULT_ICON_BASE_URL,
   loadDatabase,
   normalizeIconInput,
+  normalizeItemCatalog,
   normalizeItemKey,
   saveDatabase,
+  stripItemEnchantPrefix,
 } from '../utils/storage';
 import {
   deduplicateItemEntries,
@@ -479,7 +481,7 @@ export function useL2Database() {
   );
 
   const upsertCatalogEntry = useCallback((name: string, rawIcon: string) => {
-    const cleanName = name.trim();
+    const cleanName = stripItemEnchantPrefix(name);
     if (!cleanName) return;
     const key = normalizeItemKey(cleanName);
 
@@ -488,6 +490,12 @@ export function useL2Database() {
       const baseUrl = prev.iconBaseUrl || DEFAULT_ICON_BASE_URL;
       const icon = normalizeIconInput(rawIcon, baseUrl);
       const nextCatalog = {...(prev.itemCatalog || {})};
+
+      Object.keys(nextCatalog).forEach((existingKey) => {
+        if (existingKey !== key && normalizeItemKey(existingKey) === key) {
+          delete nextCatalog[existingKey];
+        }
+      });
 
       if (!icon) {
         delete nextCatalog[key];
@@ -509,7 +517,7 @@ export function useL2Database() {
   }, []);
 
   const deleteItemGlobally = useCallback((name: string) => {
-    const cleanName = name.trim();
+    const cleanName = stripItemEnchantPrefix(name);
     if (!cleanName) return;
     const targetKey = normalizeItemKey(cleanName);
 
@@ -535,7 +543,11 @@ export function useL2Database() {
       });
 
       const nextCatalog = {...(prev.itemCatalog || {})};
-      delete nextCatalog[targetKey];
+      Object.keys(nextCatalog).forEach((k) => {
+        if (k === targetKey || normalizeItemKey(k) === targetKey) {
+          delete nextCatalog[k];
+        }
+      });
 
       return {
         ...prev,
@@ -553,10 +565,10 @@ export function useL2Database() {
       setDb((prev) => {
         const now = new Date().toISOString();
         const baseUrl = prev.iconBaseUrl || DEFAULT_ICON_BASE_URL;
-        const nextCatalog = {...(prev.itemCatalog || {})};
+        const nextCatalog = normalizeItemCatalog(prev.itemCatalog);
 
         entries.forEach(({name, icon}) => {
-          const cleanName = name.trim();
+          const cleanName = stripItemEnchantPrefix(name);
           const normalizedIcon = normalizeIconInput(icon, baseUrl);
           if (!cleanName || !normalizedIcon) return;
           const key = normalizeItemKey(cleanName);
@@ -878,7 +890,7 @@ export function useL2Database() {
           })),
           accounts: incoming.accounts || [],
           iconBaseUrl: incoming.iconBaseUrl || DEFAULT_ICON_BASE_URL,
-          itemCatalog: incoming.itemCatalog || {},
+          itemCatalog: normalizeItemCatalog(incoming.itemCatalog),
           updatedAt: incoming.updatedAt || new Date().toISOString(),
         });
         return;

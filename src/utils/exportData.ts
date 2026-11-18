@@ -8,6 +8,7 @@ import {
   LOCATION_LABELS,
   normalizeItemKey,
   resolveItemIconUrl,
+  stripItemEnchantPrefix,
 } from './storage';
 
 export type CsvSeparator = ';' | ',';
@@ -194,10 +195,11 @@ export function exportItemsGroupedCsv(
   >();
 
   const addRow = (ownerLabel: string, locLabel: string, name: string, qty: number | null) => {
-    const key = normalizeItemKey(name);
+    const baseName = stripItemEnchantPrefix(name);
+    const key = normalizeItemKey(baseName);
     if (!map.has(key)) {
       map.set(key, {
-        name,
+        name: baseName,
         totalQty: 0,
         hasKnownQty: false,
         locations: new Set<string>(),
@@ -515,9 +517,9 @@ export function exportCatalogCsv(
     'Personajes y ubicaciones',
   ];
   const rows = entries.map((e) => {
-    const owners = Array.from(ownersByKey.get(e.key) || []);
+    const owners = Array.from(ownersByKey.get(normalizeItemKey(e.name)) || []);
     return [
-      e.name,
+      stripItemEnchantPrefix(e.name),
       e.icon,
       resolveItemIconUrl(e.icon, db.iconBaseUrl) || '',
       e.updatedAt,

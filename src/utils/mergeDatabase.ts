@@ -6,7 +6,12 @@ import {
   ItemEntry,
   L2Database,
 } from '../types/l2';
-import {DEFAULT_ICON_BASE_URL, normalizeItemKey} from './storage';
+import {
+  DEFAULT_ICON_BASE_URL,
+  normalizeExactItemKey,
+  normalizeItemKey,
+  stripItemEnchantPrefix,
+} from './storage';
 
 /**
  * Parses ISO timestamps, SQL timestamps (`YYYY-MM-DD HH:mm:ss`),
@@ -88,7 +93,7 @@ export function deduplicateItemEntries(items: ItemEntry[]): ItemEntry[] {
       uncertain: Boolean(raw.uncertain),
     };
 
-    const semanticKey = `${normalizeItemKey(normalizedItem.name)}::${normalizedItem.location}::${cleanSlot || ''}::${sortedTagKey}`;
+    const semanticKey = `${normalizeExactItemKey(normalizedItem.name)}::${normalizedItem.location}::${cleanSlot || ''}::${sortedTagKey}`;
     const equippedSlotKey =
       normalizedItem.location === 'equipped' && cleanSlot
         ? `equipped::${cleanSlot}`
@@ -363,11 +368,13 @@ export function mergeDatabasesByTimestamp(
     fallbackTs: number
   ) => {
     if (!entry || !entry.name?.trim()) return;
-    const key = normalizeItemKey(entry.name);
+    const cleanName = stripItemEnchantPrefix(entry.name);
+    if (!cleanName) return;
+    const key = normalizeItemKey(cleanName);
     const normalizedEntry: ItemCatalogEntry = {
       ...entry,
       key,
-      name: entry.name.trim(),
+      name: cleanName,
     };
     const existing = mergedCatalog[key];
     if (!existing) {

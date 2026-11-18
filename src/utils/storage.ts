@@ -1,12 +1,71 @@
 import {createStarterDatabase} from '../data/starterData';
-import {ItemLocation, L2Database} from '../types/l2';
+import {ItemCatalogEntry, ItemLocation, L2Database} from '../types/l2';
 
 const STORAGE_KEY = 'l2es_vault_db_v1';
 
 export const DEFAULT_ICON_BASE_URL = 'https://l2j.ru/img/icons/';
 
-export function normalizeItemKey(name: string): string {
+/**
+ * Removes Lineage 2 enchant prefixes like "+1 ", "+3 ", "+16 " from an item name
+ * so "+1 Dynasty Stockings" and "+3 Dynasty Stockings" resolve to "Dynasty Stockings".
+ */
+export function stripItemEnchantPrefix(name: string): string {
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+  const stripped = trimmed.replace(/^\+\s*\d+\s+/, '').trim();
+  return stripped || trimmed;
+}
+
+export function normalizeExactItemKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function normalizeItemKey(name: string): string {
+  return stripItemEnchantPrefix(name).toLowerCase();
+}
+
+export function normalizeItemCatalog(
+  rawCatalog: Record<string, ItemCatalogEntry> | undefined | null
+): Record<string, ItemCatalogEntry> {
+  const result: Record<string, ItemCatalogEntry> = {};
+  if (!rawCatalog || typeof rawCatalog !== 'object') return result;
+
+  for (const entry of Object.values(rawCatalog)) {
+    if (!entry || typeof entry.name !== 'string') continue;
+    const cleanName = stripItemEnchantPrefix(entry.name);
+    if (!cleanName) continue;
+    const key = normalizeItemKey(cleanName);
+    const normalizedEntry: ItemCatalogEntry = {
+      ...entry,
+      key,
+      name: cleanName,
+    };
+
+    const existing = result[key];
+    if (!existing) {
+      result[key] = normalizedEntry;
+      continue;
+    }
+
+    const existingHasIcon = Boolean(existing.icon && existing.icon.trim());
+    const incomingHasIcon = Boolean(
+      normalizedEntry.icon && normalizedEntry.icon.trim()
+    );
+    const existingWasClean =
+      existing.name.trim().toLowerCase() === cleanName.toLowerCase();
+
+    if (!existingHasIcon && incomingHasIcon) {
+      result[key] = normalizedEntry;
+    } else if (existingHasIcon === incomingHasIcon) {
+      const existingTs = Date.parse(existing.updatedAt || '') || 0;
+      const incomingTs = Date.parse(normalizedEntry.updatedAt || '') || 0;
+      if (incomingTs > existingTs || (!existingWasClean && incomingHasIcon)) {
+        result[key] = normalizedEntry;
+      }
+    }
+  }
+
+  return result;
 }
 
 export function normalizeIconInput(raw: string, baseUrl = DEFAULT_ICON_BASE_URL): string {
@@ -66,10 +125,7 @@ export function loadDatabase(): L2Database {
         typeof parsed.iconBaseUrl === 'string' && parsed.iconBaseUrl.trim()
           ? parsed.iconBaseUrl
           : DEFAULT_ICON_BASE_URL,
-      itemCatalog:
-        parsed.itemCatalog && typeof parsed.itemCatalog === 'object'
-          ? parsed.itemCatalog
-          : {},
+      itemCatalog: normalizeItemCatalog(parsed.itemCatalog),
       updatedAt: parsed.updatedAt || new Date().toISOString(),
     };
   } catch {
