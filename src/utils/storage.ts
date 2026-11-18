@@ -6,14 +6,24 @@ const STORAGE_KEY = 'l2es_vault_db_v1';
 export const DEFAULT_ICON_BASE_URL = 'https://l2j.ru/img/icons/';
 
 /**
- * Removes Lineage 2 enchant prefixes like "+1 ", "+3 ", "+16 " from an item name
- * so "+1 Dynasty Stockings" and "+3 Dynasty Stockings" resolve to "Dynasty Stockings".
+ * Removes Lineage 2 enchant prefixes ("+1 ", "+3 ", "+16 ") and condition
+ * prefixes ("Augmented ") from an item name so variants like
+ * "+1 Dynasty Stockings", "Augmented Angel Slayer", or "+4 Augmented Angel Slayer"
+ * resolve to their single base item name ("Dynasty Stockings", "Angel Slayer").
  */
 export function stripItemEnchantPrefix(name: string): string {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
-  const stripped = trimmed.replace(/^\+\s*\d+\s+/, '').trim();
-  return stripped || trimmed;
+  let current = trimmed;
+  while (true) {
+    const next = current
+      .replace(/^\+\s*\d+\s+/, '')
+      .replace(/^augmented\s+/i, '')
+      .trim();
+    if (!next || next === current) break;
+    current = next;
+  }
+  return current || trimmed;
 }
 
 export function normalizeExactItemKey(name: string): string {
