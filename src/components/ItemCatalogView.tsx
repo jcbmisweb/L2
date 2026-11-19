@@ -13,7 +13,11 @@ import {useMemo, useState} from 'react';
 import {ItemLocation, L2Database} from '../types/l2';
 import {
   DEFAULT_ICON_BASE_URL,
+  ItemArmorType,
+  ItemGradeCategory,
   LOCATION_LABELS,
+  extractItemArmorType,
+  extractItemGradeCategory,
   formatInt,
   normalizeIconInput,
   normalizeItemKey,
@@ -61,6 +65,8 @@ export function ItemCatalogView({
 }: ItemCatalogViewProps) {
   const [query, setQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'linked'>('all');
+  const [gradeFilter, setGradeFilter] = useState<'all' | ItemGradeCategory>('all');
+  const [armorTypeFilter, setArmorTypeFilter] = useState<'all' | ItemArmorType>('all');
 
   const [baseUrlInput, setBaseUrlInput] = useState(
     db.iconBaseUrl || DEFAULT_ICON_BASE_URL
@@ -219,6 +225,18 @@ export function ItemCatalogView({
     return mergedRows.filter((row) => {
       if (filterMode === 'linked' && !row.icon) return false;
       if (filterMode === 'missing' && Boolean(row.icon)) return false;
+      if (
+        gradeFilter !== 'all' &&
+        extractItemGradeCategory(row.name) !== gradeFilter
+      ) {
+        return false;
+      }
+      if (
+        armorTypeFilter !== 'all' &&
+        extractItemArmorType(row.name) !== armorTypeFilter
+      ) {
+        return false;
+      }
       if (q) {
         const ownerText = row.owners
           .map(
@@ -233,7 +251,7 @@ export function ItemCatalogView({
       }
       return true;
     });
-  }, [mergedRows, filterMode, query]);
+  }, [mergedRows, filterMode, gradeFilter, armorTypeFilter, query]);
 
   const handleSaveRow = (row: MergedCatalogRow) => {
     const raw =
@@ -454,31 +472,64 @@ export function ItemCatalogView({
 
       {/* Filters & Catalog Table */}
       <section className="bg-[#111827] border border-[#1E293B] rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-[#1E293B] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md w-fit">
-            {(
-              [
-                ['all', `Todos (${counts.total})`],
-                ['missing', `Sin imagen (${counts.missing})`],
-                ['linked', `Con imagen (${counts.linked})`],
-              ] as const
-            ).map(([val, label]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setFilterMode(val)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
-                  filterMode === val
-                    ? 'bg-[#1E293B] text-slate-100'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+        <div className="p-4 border-b border-[#1E293B] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1 p-1 bg-[#0B0F17] border border-[#1E293B] rounded-md w-fit">
+              {(
+                [
+                  ['all', `Todos (${counts.total})`],
+                  ['missing', `Sin imagen (${counts.missing})`],
+                  ['linked', `Con imagen (${counts.linked})`],
+                ] as const
+              ).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setFilterMode(val)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                    filterMode === val
+                      ? 'bg-[#1E293B] text-slate-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <select
+              aria-label="Filtrar por categoría de grado"
+              value={gradeFilter}
+              onChange={(e) =>
+                setGradeFilter(e.target.value as 'all' | ItemGradeCategory)
+              }
+              className="bg-[#0B0F17] border border-[#1E293B] rounded-md px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            >
+              <option value="all">Categorías (D-S)</option>
+              <option value="S">Categoría S</option>
+              <option value="A">Categoría A</option>
+              <option value="B">Categoría B</option>
+              <option value="C">Categoría C</option>
+              <option value="D">Categoría D</option>
+              <option value="No-Grade">No-Grade</option>
+            </select>
+
+            <select
+              aria-label="Filtrar por tipo de ropa"
+              value={armorTypeFilter}
+              onChange={(e) =>
+                setArmorTypeFilter(e.target.value as 'all' | ItemArmorType)
+              }
+              className="bg-[#0B0F17] border border-[#1E293B] rounded-md px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+            >
+              <option value="all">Tipo ropa: Todos</option>
+              <option value="Heavy Armor">Heavy Armor</option>
+              <option value="Light Armor">Light Armor</option>
+              <option value="Robe">Robe</option>
+            </select>
           </div>
 
-          <div className="relative w-full sm:w-72">
+          <div className="relative w-full lg:w-72">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"

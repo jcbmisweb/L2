@@ -5,6 +5,9 @@ const STORAGE_KEY = 'l2es_vault_db_v1';
 
 export const DEFAULT_ICON_BASE_URL = 'https://l2j.ru/img/icons/';
 
+export type ItemGradeCategory = 'No-Grade' | 'D' | 'C' | 'B' | 'A' | 'S';
+export type ItemArmorType = 'Heavy Armor' | 'Light Armor' | 'Robe';
+
 const GRADE_LABELS: Record<string, string> = {
   ng: 'No-Grade',
   'no-grade': 'No-Grade',
@@ -13,13 +16,48 @@ const GRADE_LABELS: Record<string, string> = {
   b: 'B-Grade',
   a: 'A-Grade',
   s: 'S-Grade',
-  s80: 'S80-Grade',
-  s84: 'S84-Grade',
+  s80: 'S-Grade',
+  s84: 'S-Grade',
 };
+
+const GRADE_CATEGORIES: Record<string, ItemGradeCategory> = {
+  ng: 'No-Grade',
+  'no-grade': 'No-Grade',
+  d: 'D',
+  c: 'C',
+  b: 'B',
+  a: 'A',
+  s: 'S',
+  s80: 'S',
+  s84: 'S',
+};
+
+const ARMOR_SLOT_NOUN_RE =
+  /\b(?:gloves|gauntlets|boots|shoes|greaves|gaiters|stockings|hose|leggings|helmet|circlet|cap|hat|tunic|doublet|breastplate|cuirass|plate\s+armor|leather\s+armor|hauberk|brigandine|shirt|sigil|shield|armor)\b$/i;
 
 function formatGradeToken(raw: string): string | null {
   const clean = raw.trim().toLowerCase().replace(/\s+/g, '-');
   return GRADE_LABELS[clean] || null;
+}
+
+function parseGradeCategoryToken(raw: string): ItemGradeCategory | null {
+  const clean = raw.trim().toLowerCase().replace(/\s+/g, '-');
+  return GRADE_CATEGORIES[clean] || null;
+}
+
+function parseArmorTypeToken(raw: string): ItemArmorType | null {
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  if (/^heavy(?:\s+(?:armou?r|armo))?$/i.test(t) || t === 'pesada') {
+    return 'Heavy Armor';
+  }
+  if (/^light(?:\s+(?:armou?r|armo))?$/i.test(t) || t === 'ligera') {
+    return 'Light Armor';
+  }
+  if (t === 'robe' || t === 'túnica' || t === 'tunica') {
+    return 'Robe';
+  }
+  return null;
 }
 
 function extractGradeFromTags(tags: string[]): string | null {
@@ -44,6 +82,14 @@ function extractGradeFromTags(tags: string[]): string | null {
   return null;
 }
 
+function extractArmorTypeFromTags(tags: string[]): ItemArmorType | null {
+  for (const tag of tags) {
+    const parsed = parseArmorTypeToken(tag);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
 function extractSoulCrystalStageFromTags(tags: string[]): number | null {
   for (const tag of tags) {
     const t = tag.trim();
@@ -58,41 +104,230 @@ function extractSoulCrystalStageFromTags(tags: string[]): number | null {
   return null;
 }
 
-function hasGradeInName(name: string): boolean {
-  return (
-    /\(\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\)/i.test(
-      name
-    ) ||
-    /\(\s*(?:grade|grado)\s+(?:no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)/i.test(
-      name
-    ) ||
-    /\[\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]/i.test(
-      name
-    ) ||
-    /\b(?:no[-\s]?grade|s84|s80|[sabcd])\s*-?\s*grade\b/i.test(name) ||
-    /\b(?:grade|grado)\s+(?:no[-\s]?grade|ng|s84|s80|[sabcd])\b/i.test(name) ||
-    /(?:\s+-\s+|\s+)(?:s84|s80|[sabcd])$/i.test(name)
+function parseGradeTokenStrict(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const prefixMatch = t.match(
+    /^(?:grade|grado)[-\s:]*(no[-\s]?grade|ng|s84|s80|[sabcd])$/i
   );
+  if (prefixMatch) return formatGradeToken(prefixMatch[1]);
+  const suffixMatch = t.match(
+    /^(no[-\s]?grade|ng|s84|s80|[sabcd])(?:[-\s]*(?:grade|grado))?$/i
+  );
+  if (suffixMatch) return formatGradeToken(suffixMatch[1]);
+  return null;
 }
 
-function isGradeDifferentiatedItem(name: string): boolean {
-  return (
-    /\bscroll:\s*enchant\b/i.test(name) ||
-    /\b(?:ancient|divine|crystal)\s*crystal:\s*enchant\b/i.test(name) ||
-    /\bscroll:\s*recovery\b/i.test(name) ||
-    /^crystal(?:\s*[\[(][^\]\)]+[\])]|\s*[-–]?\s*(?:grade|grado)?\s*(?:no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?)?$/i.test(
-      name
-    ) ||
-    /^(?:blessed\s+)?(?:beast\s+)?(?:soul|spirit)shot\b/i.test(name) ||
-    /^elixir\s+of\s+(?:life|cp|mental\s+strength)\b/i.test(name)
-  );
+function parseTrailingModifiers(rawName: string): {
+  base: string;
+  armorType: ItemArmorType | null;
+  grade: string | null;
+} {
+  let current = rawName.trim().replace(/\s+/g, ' ');
+  let armorType: ItemArmorType | null = null;
+  let grade: string | null = null;
+
+  while (current) {
+    let matched = false;
+
+    // 1. Trailing parenthesized or bracketed modifier(s): e.g. "(Heavy Armor)", "(B-Grade)", "(Heavy Armor, B-Grade)", "[S]"
+    const parenMatch = current.match(/^(.*?)\s*(?:\(([^()]+)\)|\[([^\[\]]+)\])$/);
+    if (parenMatch) {
+      const inner = (parenMatch[2] || parenMatch[3] || '').trim();
+      const candidateBase = parenMatch[1].trim();
+      if (candidateBase && inner) {
+        const parts = inner
+          .split(/[,/|·]+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+        let allValid = parts.length > 0;
+        let foundArmor: ItemArmorType | null = null;
+        let foundGrade: string | null = null;
+
+        for (const part of parts) {
+          const a = parseArmorTypeToken(part);
+          if (a) {
+            foundArmor = foundArmor || a;
+            continue;
+          }
+          const g = parseGradeTokenStrict(part);
+          if (g) {
+            foundGrade = foundGrade || g;
+            continue;
+          }
+          allValid = false;
+          break;
+        }
+
+        if (allValid) {
+          if (foundArmor && !armorType) armorType = foundArmor;
+          if (foundGrade && !grade) grade = foundGrade;
+          current = candidateBase;
+          matched = true;
+        }
+      }
+    }
+    if (matched) continue;
+
+    // 2. Bare trailing "Heavy Armor" / "Light Armor" (including minor typo "Armo"): e.g. "Blue Wolf Gloves Heavy Armor"
+    const armorFullMatch = current.match(
+      /^(.*?)(?:\s*[-–]\s*|\s+)(heavy\s+(?:armou?r|armo)|light\s+(?:armou?r|armo))$/i
+    );
+    if (armorFullMatch && armorFullMatch[1].trim()) {
+      const parsedArmor = parseArmorTypeToken(armorFullMatch[2]);
+      if (parsedArmor) {
+        if (!armorType) armorType = parsedArmor;
+        current = armorFullMatch[1].trim();
+        continue;
+      }
+    }
+
+    // 3. Bare trailing "Heavy" / "Light" / "Robe" after an armor slot noun: e.g. "Blue Wolf Gloves Robe"
+    const armorShortMatch = current.match(
+      /^(.*?)(?:\s*[-–]\s*|\s+)(heavy|light|robe)$/i
+    );
+    if (armorShortMatch) {
+      const candidateBase = armorShortMatch[1].trim();
+      if (candidateBase && ARMOR_SLOT_NOUN_RE.test(candidateBase)) {
+        const parsedArmor = parseArmorTypeToken(armorShortMatch[2]);
+        if (parsedArmor) {
+          if (!armorType) armorType = parsedArmor;
+          current = candidateBase;
+          continue;
+        }
+      }
+    }
+
+    // 4. Bare trailing grade with hyphen ("- B", "- A-Grade") or explicit "Grade X" / "X-Grade"
+    const bareGradeMatch = current.match(
+      /^(.*?)(?:\s*[-–]\s*(?:(?:grade|grado)[-\s:]*)?(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?|\s+(?:(?:grade|grado)[-\s:]+(no[-\s]?grade|ng|s84|s80|[sabcd])|(no[-\s]?grade|s84|s80|[sabcd])\s*-?\s*grade))$/i
+    );
+    if (bareGradeMatch && bareGradeMatch[1].trim()) {
+      const rawG = bareGradeMatch[2] || bareGradeMatch[3] || bareGradeMatch[4];
+      const formatted = rawG ? formatGradeToken(rawG) : null;
+      if (formatted) {
+        if (!grade) grade = formatted;
+        current = bareGradeMatch[1].trim();
+        continue;
+      }
+    }
+
+    break;
+  }
+
+  return {base: current, armorType, grade};
+}
+
+function hasArmorTypeInBase(base: string, armorType: ItemArmorType): boolean {
+  if (armorType === 'Robe') return /\brobe\b/i.test(base);
+  if (armorType === 'Heavy Armor') return /\bheavy\s+armou?r\b/i.test(base);
+  return /\blight\s+armou?r\b/i.test(base);
 }
 
 /**
- * Ensures grade-differentiated items (Enchant/Recovery scrolls, base Crystals,
- * Soulshots/Spiritshots, Elixirs) and Soul Crystals (Stages 1–18 or grades)
- * preserve their grade or level inside `name` using `tags` when missing,
- * so different grades/stages never collapse into a single item.
+ * Strips any trailing armor demarcation (`(Heavy Armor)`, `(Light Armor)`, `(Robe)`)
+ * and grade suffix (`(D-Grade)`..`(S-Grade)`) to recover the raw item base name.
+ */
+export function stripGradeAndArmorFromItemName(name: string): string {
+  return parseTrailingModifiers(name).base;
+}
+
+export function extractItemGradeCategory(
+  name: string,
+  tags?: string[] | null
+): ItemGradeCategory | null {
+  const {grade} = parseTrailingModifiers(name);
+  if (grade) {
+    const clean = grade.replace(/-grade$/i, '').trim();
+    const parsed = parseGradeCategoryToken(clean);
+    if (parsed) return parsed;
+  }
+  const cleanTags = Array.isArray(tags)
+    ? tags.map((t) => String(t).trim()).filter(Boolean)
+    : [];
+  const fromTags = extractGradeFromTags(cleanTags);
+  if (fromTags) {
+    return parseGradeCategoryToken(fromTags.replace(/-grade$/i, '').trim());
+  }
+  return null;
+}
+
+export function extractItemArmorType(
+  name: string,
+  tags?: string[] | null
+): ItemArmorType | null {
+  const {base, armorType} = parseTrailingModifiers(name);
+  if (armorType) return armorType;
+  const cleanTags = Array.isArray(tags)
+    ? tags.map((t) => String(t).trim()).filter(Boolean)
+    : [];
+  const fromTags = extractArmorTypeFromTags(cleanTags);
+  if (fromTags) return fromTags;
+  if (/\brobe\b/i.test(base)) return 'Robe';
+  return null;
+}
+
+export function updateItemNameAndTags(
+  currentName: string,
+  currentTagsRaw: string,
+  patch: {
+    grade?: ItemGradeCategory | '';
+    armorType?: ItemArmorType | '';
+  }
+): {name: string; tags: string} {
+  const tagsList = currentTagsRaw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const nonGradeTags =
+    patch.grade !== undefined
+      ? tagsList.filter((t) => !parseGradeTokenStrict(t))
+      : tagsList;
+
+  const finalTags =
+    patch.armorType !== undefined
+      ? nonGradeTags.filter((t) => !parseArmorTypeToken(t))
+      : nonGradeTags;
+
+  if (patch.grade) {
+    finalTags.unshift(patch.grade === 'No-Grade' ? 'NG' : patch.grade);
+  }
+  if (patch.armorType) {
+    finalTags.push(patch.armorType);
+  }
+
+  const parsed = parseTrailingModifiers(currentName);
+  const nextArmorType =
+    patch.armorType !== undefined
+      ? patch.armorType || null
+      : parsed.armorType || extractArmorTypeFromTags(finalTags);
+  const nextGrade =
+    patch.grade !== undefined
+      ? patch.grade
+        ? formatGradeToken(patch.grade)
+        : null
+      : parsed.grade || extractGradeFromTags(finalTags);
+
+  let nextName = parsed.base || currentName.trim();
+  if (nextArmorType && !hasArmorTypeInBase(nextName, nextArmorType)) {
+    nextName = `${nextName} (${nextArmorType})`;
+  }
+  if (nextGrade) {
+    nextName = `${nextName} (${nextGrade})`;
+  }
+
+  return {
+    name: nextName,
+    tags: Array.from(new Set(finalTags)).join(', '),
+  };
+}
+
+/**
+ * Ensures items preserve and standardize:
+ * - Soul Crystal stage (`- Stage 1..18`) or grade
+ * - Armor type demarcation (`(Heavy Armor)`, `(Light Armor)`, `(Robe)`)
+ * - Equipment/Scroll/Crystal/Shot/Elixir grade (`(D-Grade)`, `(C-Grade)`, `(B-Grade)`, `(A-Grade)`, `(S-Grade)`, `(No-Grade)`)
  */
 export function resolveItemNameWithGrade(
   name: string,
@@ -131,44 +366,24 @@ export function resolveItemNameWithGrade(
       return `${trimmed} - Stage ${stageFromTag}`;
     }
 
-    if (hasGradeInName(trimmed)) {
-      return trimmed;
-    }
-
-    const gradeFromTag = extractGradeFromTags(cleanTags);
-    if (gradeFromTag) {
-      return `${trimmed} (${gradeFromTag})`;
-    }
-
-    return trimmed;
+    const {base, grade} = parseTrailingModifiers(trimmed);
+    const resolvedGrade = grade || extractGradeFromTags(cleanTags);
+    return resolvedGrade ? `${base} (${resolvedGrade})` : trimmed;
   }
 
-  // 2. Grade-differentiated Scrolls, Crystals, Shots, Elixirs
-  if (isGradeDifferentiatedItem(trimmed)) {
-    const bracketOrBareGrade = trimmed.match(
-      /^(.*?)\s*(?:\[\s*(?:(?:grade|grado)[-\s:]*)?(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]|\(\s*(no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)|[-–]\s*(?:(?:grade|grado)[-\s:]*)?(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?)$/i
-    );
-    if (bracketOrBareGrade) {
-      const base = bracketOrBareGrade[1].trim();
-      const rawGrade =
-        bracketOrBareGrade[2] || bracketOrBareGrade[3] || bracketOrBareGrade[4];
-      const formatted = rawGrade ? formatGradeToken(rawGrade) : null;
-      if (base && formatted) {
-        return `${base} (${formatted})`;
-      }
-    }
+  // 2. Armors, Weapons, Shields, Jewels, Scrolls, Crystals, Shots, Elixirs
+  const {base, armorType, grade} = parseTrailingModifiers(trimmed);
+  const resolvedArmorType = armorType || extractArmorTypeFromTags(cleanTags);
+  const resolvedGrade = grade || extractGradeFromTags(cleanTags);
 
-    if (hasGradeInName(trimmed)) {
-      return trimmed;
-    }
-
-    const gradeFromTag = extractGradeFromTags(cleanTags);
-    if (gradeFromTag) {
-      return `${trimmed} (${gradeFromTag})`;
-    }
+  let out = base || trimmed;
+  if (resolvedArmorType && !hasArmorTypeInBase(out, resolvedArmorType)) {
+    out = `${out} (${resolvedArmorType})`;
   }
-
-  return trimmed;
+  if (resolvedGrade) {
+    out = `${out} (${resolvedGrade})`;
+  }
+  return out;
 }
 
 /**
@@ -197,31 +412,8 @@ export function normalizeExactItemKey(name: string): string {
 }
 
 export function normalizeItemKey(name: string): string {
-  return stripItemEnchantPrefix(name)
-    .toLowerCase()
-    .replace(
-      /\(\s*(?:grade|grado)\s+(no[-\s]?grade|ng|s84|s80|[sabcd])\s*\)/g,
-      (_, g: string) => {
-        const clean = g.replace(/\s+/g, '-');
-        return clean === 'ng' || clean === 'no-grade'
-          ? '(no-grade)'
-          : `(${clean}-grade)`;
-      }
-    )
-    .replace(
-      /\[\s*(?:grade|grado)?\s*(no[-\s]?grade|ng|s84|s80|[sabcd])(?:\s*-?\s*grade)?\s*\]/g,
-      (_, g: string) => {
-        const clean = g.replace(/\s+/g, '-');
-        return clean === 'ng' || clean === 'no-grade'
-          ? '(no-grade)'
-          : `(${clean}-grade)`;
-      }
-    )
-    .replace(/\(\s*(s84|s80|[sabcd])\s*\)/g, '($1-grade)')
-    .replace(
-      /(\bsoul\s+crystal)\s*(?:-|\(|\[)?\s*(?:stage|level|nivel|lv\.?|step)?\s*(1[0-8]|[1-9])\s*(?:\)|\])?$/g,
-      '$1 - stage $2'
-    );
+  const withoutEnchant = stripItemEnchantPrefix(name);
+  return resolveItemNameWithGrade(withoutEnchant).toLowerCase();
 }
 
 export function normalizeItemCatalog(
@@ -313,11 +505,32 @@ function normalizeStoredItems(items: unknown): ItemEntry[] {
   });
 }
 
+function normalizeDatabaseRecord(raw: L2Database): L2Database {
+  return {
+    version: 1,
+    characters: (raw.characters || []).map((c) => ({
+      ...c,
+      items: normalizeStoredItems(c.items),
+    })),
+    clans: (raw.clans || []).map((cl) => ({
+      ...cl,
+      items: normalizeStoredItems(cl.items),
+    })),
+    accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
+    iconBaseUrl:
+      typeof raw.iconBaseUrl === 'string' && raw.iconBaseUrl.trim()
+        ? raw.iconBaseUrl
+        : DEFAULT_ICON_BASE_URL,
+    itemCatalog: normalizeItemCatalog(raw.itemCatalog),
+    updatedAt: raw.updatedAt || new Date().toISOString(),
+  };
+}
+
 export function loadDatabase(): L2Database {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const starter = createStarterDatabase();
+      const starter = normalizeDatabaseRecord(createStarterDatabase());
       saveDatabase(starter);
       return starter;
     }
@@ -328,30 +541,13 @@ export function loadDatabase(): L2Database {
       !Array.isArray(parsed.characters) ||
       !Array.isArray(parsed.clans)
     ) {
-      const starter = createStarterDatabase();
+      const starter = normalizeDatabaseRecord(createStarterDatabase());
       saveDatabase(starter);
       return starter;
     }
-    return {
-      version: 1,
-      characters: parsed.characters.map((c) => ({
-        ...c,
-        items: normalizeStoredItems(c.items),
-      })),
-      clans: parsed.clans.map((cl) => ({
-        ...cl,
-        items: normalizeStoredItems(cl.items),
-      })),
-      accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
-      iconBaseUrl:
-        typeof parsed.iconBaseUrl === 'string' && parsed.iconBaseUrl.trim()
-          ? parsed.iconBaseUrl
-          : DEFAULT_ICON_BASE_URL,
-      itemCatalog: normalizeItemCatalog(parsed.itemCatalog),
-      updatedAt: parsed.updatedAt || new Date().toISOString(),
-    };
+    return normalizeDatabaseRecord(parsed);
   } catch {
-    return createStarterDatabase();
+    return normalizeDatabaseRecord(createStarterDatabase());
   }
 }
 

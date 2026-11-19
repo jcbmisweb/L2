@@ -18,7 +18,15 @@ import {
   ItemCatalogEntry,
   ItemLocation,
 } from '../types/l2';
-import {formatDateShort, formatInt} from '../utils/storage';
+import {
+  ItemArmorType,
+  ItemGradeCategory,
+  extractItemArmorType,
+  extractItemGradeCategory,
+  formatDateShort,
+  formatInt,
+  updateItemNameAndTags,
+} from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
 
 interface ClanDetailViewProps {
@@ -475,6 +483,59 @@ export function ClanDetailView({
                   Guardar
                 </button>
               </div>
+              <div className="sm:col-span-12 flex flex-wrap items-center gap-2 pt-0.5">
+                <select
+                  aria-label="Categoría de grado"
+                  value={
+                    extractItemGradeCategory(
+                      newItemName,
+                      newItemTags.split(',').map((t) => t.trim())
+                    ) || ''
+                  }
+                  onChange={(e) => {
+                    const next = updateItemNameAndTags(
+                      newItemName,
+                      newItemTags,
+                      {grade: e.target.value as ItemGradeCategory | ''}
+                    );
+                    setNewItemName(next.name);
+                    setNewItemTags(next.tags);
+                  }}
+                  className="bg-[#111827] border border-[#1E293B] rounded px-2 py-1 text-[11px] text-slate-200"
+                >
+                  <option value="">Categoría: Sin grado</option>
+                  <option value="D">Categoría D</option>
+                  <option value="C">Categoría C</option>
+                  <option value="B">Categoría B</option>
+                  <option value="A">Categoría A</option>
+                  <option value="S">Categoría S</option>
+                  <option value="No-Grade">No-Grade</option>
+                </select>
+                <select
+                  aria-label="Tipo de armadura"
+                  value={
+                    extractItemArmorType(
+                      newItemName,
+                      newItemTags.split(',').map((t) => t.trim())
+                    ) || ''
+                  }
+                  onChange={(e) => {
+                    const next = updateItemNameAndTags(
+                      newItemName,
+                      newItemTags,
+                      {armorType: e.target.value as ItemArmorType | ''}
+                    );
+                    setNewItemName(next.name);
+                    setNewItemTags(next.tags);
+                  }}
+                  className="bg-[#111827] border border-[#1E293B] rounded px-2 py-1 text-[11px] text-slate-200"
+                >
+                  <option value="">Tipo ropa: Ninguno</option>
+                  <option value="Heavy Armor">Heavy Armor</option>
+                  <option value="Light Armor">Light Armor</option>
+                  <option value="Robe">Robe</option>
+                </select>
+              </div>
             </form>
           )}
         </div>
@@ -512,13 +573,74 @@ export function ClanDetailView({
                               onChange={(e) => setEditName(e.target.value)}
                               className="w-full bg-[#0B0F17] border border-amber-500/60 rounded px-2 py-1 text-xs text-slate-100"
                             />
-                            <input
-                              type="text"
-                              value={editTags}
-                              onChange={(e) => setEditTags(e.target.value)}
-                              placeholder="Etiquetas separadas por coma"
-                              className="w-full bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] font-mono text-amber-300"
-                            />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <select
+                                aria-label="Categoría de grado"
+                                value={
+                                  extractItemGradeCategory(
+                                    editName,
+                                    editTags.split(',').map((t) => t.trim())
+                                  ) || ''
+                                }
+                                onChange={(e) => {
+                                  const next = updateItemNameAndTags(
+                                    editName,
+                                    editTags,
+                                    {
+                                      grade: e.target.value as
+                                        | ItemGradeCategory
+                                        | '',
+                                    }
+                                  );
+                                  setEditName(next.name);
+                                  setEditTags(next.tags);
+                                }}
+                                className="bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] text-slate-200"
+                              >
+                                <option value="">Grado: —</option>
+                                <option value="D">Grado D</option>
+                                <option value="C">Grado C</option>
+                                <option value="B">Grado B</option>
+                                <option value="A">Grado A</option>
+                                <option value="S">Grado S</option>
+                                <option value="No-Grade">No-Grade</option>
+                              </select>
+                              <select
+                                aria-label="Tipo de armadura"
+                                value={
+                                  extractItemArmorType(
+                                    editName,
+                                    editTags.split(',').map((t) => t.trim())
+                                  ) || ''
+                                }
+                                onChange={(e) => {
+                                  const next = updateItemNameAndTags(
+                                    editName,
+                                    editTags,
+                                    {
+                                      armorType: e.target.value as
+                                        | ItemArmorType
+                                        | '',
+                                    }
+                                  );
+                                  setEditName(next.name);
+                                  setEditTags(next.tags);
+                                }}
+                                className="bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] text-slate-200"
+                              >
+                                <option value="">Tipo ropa: —</option>
+                                <option value="Heavy Armor">Heavy Armor</option>
+                                <option value="Light Armor">Light Armor</option>
+                                <option value="Robe">Robe</option>
+                              </select>
+                              <input
+                                type="text"
+                                value={editTags}
+                                onChange={(e) => setEditTags(e.target.value)}
+                                placeholder="Etiquetas (ej. B, Heavy Armor)"
+                                className="flex-1 min-w-[140px] bg-[#0B0F17] border border-[#1E293B] rounded px-2 py-1 text-[11px] font-mono text-amber-300"
+                              />
+                            </div>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2.5">
