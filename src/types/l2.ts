@@ -187,4 +187,5 @@ export type ActiveView =
   | 'account'
   | 'downloads'
   | 'professions'
-  | 'armors';
+  | 'armors'
+  | 'epics';

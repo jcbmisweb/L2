@@ -129,7 +129,9 @@ export function ArmorSetsView({
       totalLoose += a.totalLoosePieces;
       totalAssemblable += a.assemblableExtraCount;
     });
-    const customPhotos = Object.keys(db.armorSetImages || {}).length;
+    const customPhotos = Object.keys(db.armorSetImages || {}).filter(
+      (k) => !k.startsWith('epic::')
+    ).length;
     return {
       totalComplete,
       totalLoose,

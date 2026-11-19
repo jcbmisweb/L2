@@ -8,6 +8,7 @@ import {BackupModal} from './components/BackupModal';
 import {CharacterDetailView} from './components/CharacterDetailView';
 import {ClanDetailView} from './components/ClanDetailView';
 import {DownloadsView} from './components/DownloadsView';
+import {EpicJewelsView} from './components/EpicJewelsView';
 import {GlobalSearchView} from './components/GlobalSearchView';
 import {ItemCatalogView} from './components/ItemCatalogView';
 import {ProfessionsView} from './components/ProfessionsView';
@@ -116,6 +117,9 @@ export default function App() {
     if (activeView === 'armors') {
       return [serverLabel, 'Colección de Armaduras (Sets)'];
     }
+    if (activeView === 'epics') {
+      return [serverLabel, 'Joyas épicas y especiales'];
+    }
     if (activeView === 'downloads') {
       return [serverLabel, 'Descargar y subir datos'];
     }
@@ -205,6 +209,7 @@ export default function App() {
         }}
         onNavigateProfessions={() => setActiveView('professions')}
         onNavigateArmors={() => setActiveView('armors')}
+        onNavigateEpics={() => setActiveView('epics')}
         onNavigateDownloads={() => setActiveView('downloads')}
         onSelectCharacter={handleOpenCharacter}
         onSelectClan={handleOpenClan}
@@ -257,6 +262,14 @@ export default function App() {
               onSelectCharacter={handleOpenCharacter}
               onSelectClan={handleOpenClan}
               onSetArmorImage={setArmorSetImage}
+            />
+          ) : activeView === 'epics' ? (
+            <EpicJewelsView
+              db={db}
+              selectedServer={selectedServer}
+              onSelectCharacter={handleOpenCharacter}
+              onSelectClan={handleOpenClan}
+              onSetJewelImage={setArmorSetImage}
             />
           ) : activeView === 'downloads' ? (
             <DownloadsView
