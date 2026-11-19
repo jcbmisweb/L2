@@ -64,8 +64,8 @@ async function compressImageFileToDataUrl(file: File): Promise<string> {
       const img = new Image();
       img.onerror = () => reject(new Error('Formato de imagen no válido.'));
       img.onload = () => {
-        const maxH = 380;
-        const maxW = 300;
+        const maxH = 620;
+        const maxW = 360;
         const scale = Math.min(1, maxW / img.width, maxH / img.height);
         const w = Math.max(1, Math.round(img.width * scale));
         const h = Math.max(1, Math.round(img.height * scale));
@@ -502,8 +502,8 @@ export function ArmorSetsView({
                               )}
                             </div>
 
-                            {/* Portrait Image */}
-                            <div className="relative h-44 bg-[#0B0F17] border-b border-[#1E293B] group overflow-hidden">
+                            {/* Tall Vertical Portrait Image (fits elongated full-body L2 screenshots) */}
+                            <div className="relative h-72 sm:h-80 bg-[#0B0F17] border-b border-[#1E293B] group overflow-hidden">
                               <ArmorArtwork
                                 armorType={set.armorType}
                                 grade={set.grade}
@@ -519,10 +519,10 @@ export function ArmorSetsView({
                                     ? 'Cambiar o quitar foto personalizada'
                                     : 'Subir foto del personaje con esta armadura'
                                 }
-                                className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0B0F17]/90 hover:bg-amber-500 text-slate-200 hover:text-slate-950 border border-[#334155] hover:border-amber-400 text-[11px] font-medium transition-colors"
+                                className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0B0F17]/85 hover:bg-amber-500 text-slate-200 hover:text-slate-950 border border-[#334155] hover:border-amber-400 text-[11px] font-medium transition-all opacity-80 group-hover:opacity-100"
                               >
                                 <Camera className="w-3 h-3" />
-                                <span>{customPhoto ? 'Foto' : 'Subir foto'}</span>
+                                <span>{customPhoto ? 'Cambiar' : 'Subir foto'}</span>
                               </button>
                             </div>
 
@@ -758,7 +758,7 @@ export function ArmorSetsView({
             </div>
 
             <div className="p-5 space-y-4 text-xs">
-              <div className="h-48 rounded-md border border-[#1E293B] overflow-hidden bg-[#0B0F17]">
+              <div className="h-72 rounded-md border border-[#1E293B] overflow-hidden bg-[#0B0F17]">
                 <ArmorArtwork
                   armorType={activePhotoSet.armorType}
                   grade={activePhotoSet.grade}
