@@ -627,6 +627,28 @@ export function useL2Database() {
     }));
   }, []);
 
+  const setArmorSetImage = useCallback(
+    (setId: string, imageUrl: string | null) => {
+      const cleanId = setId.trim();
+      if (!cleanId) return;
+      setDb((prev) => {
+        const nextImages = {...(prev.armorSetImages || {})};
+        if (imageUrl && imageUrl.trim()) {
+          nextImages[cleanId] = imageUrl.trim();
+        } else {
+          delete nextImages[cleanId];
+        }
+        return {
+          ...prev,
+          armorSetImages:
+            Object.keys(nextImages).length > 0 ? nextImages : undefined,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    },
+    []
+  );
+
   const upsertAccount = useCallback(
     (input: {
       server: string;
@@ -919,6 +941,7 @@ export function useL2Database() {
           accounts: incoming.accounts || [],
           iconBaseUrl: incoming.iconBaseUrl || DEFAULT_ICON_BASE_URL,
           itemCatalog: normalizeItemCatalog(incoming.itemCatalog),
+          armorSetImages: incoming.armorSetImages,
           updatedAt: incoming.updatedAt || new Date().toISOString(),
         });
         return;
@@ -955,6 +978,7 @@ export function useL2Database() {
     bulkUpsertCatalog,
     deleteItemGlobally,
     setIconBaseUrl,
+    setArmorSetImage,
     upsertAccount,
     bulkUpsertAccounts,
     applyPartialItemsImport,

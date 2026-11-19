@@ -120,6 +120,7 @@ export interface L2Database {
   accounts: AccountMeta[];
   iconBaseUrl: string;
   itemCatalog: Record<string, ItemCatalogEntry>;
+  armorSetImages?: Record<string, string>;
   updatedAt: string;
 }
 
@@ -185,4 +186,5 @@ export type ActiveView =
   | 'accounts'
   | 'account'
   | 'downloads'
-  | 'professions';
+  | 'professions'
+  | 'armors';

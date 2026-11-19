@@ -25,6 +25,7 @@ import {
   updateItemNameAndTags,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
+import {ItemNameDisplay} from './ItemNameDisplay';
 
 interface GlobalSearchViewProps {
   db: L2Database;
@@ -417,8 +418,10 @@ export function GlobalSearchView({
               }
               className="bg-[#0B0F17] border border-[#1E293B] rounded-md px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
             >
-              <option value="all">Todas las categorías (D-S)</option>
-              <option value="S">Categoría S (S / S80 / S84)</option>
+              <option value="all">Todas las categorías (D-S84)</option>
+              <option value="S84">Categoría S84</option>
+              <option value="S80">Categoría S80</option>
+              <option value="S">Categoría S</option>
               <option value="A">Categoría A</option>
               <option value="B">Categoría B</option>
               <option value="C">Categoría C</option>
@@ -687,6 +690,8 @@ export function GlobalSearchView({
                                 <option value="B">Grado B</option>
                                 <option value="A">Grado A</option>
                                 <option value="S">Grado S</option>
+                                <option value="S80">Grado S80</option>
+                                <option value="S84">Grado S84</option>
                                 <option value="No-Grade">No-Grade</option>
                               </select>
                               <select
@@ -735,14 +740,10 @@ export function GlobalSearchView({
                               onClick={() => onQuickEditIcon(row.item.name)}
                             />
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                              <span className="font-medium text-slate-100">
-                                {row.item.name}
-                              </span>
-                              {row.item.tags.length > 0 && (
-                                <span className="font-mono text-[11px] text-amber-400/90">
-                                  {row.item.tags.join(' · ')}
-                                </span>
-                              )}
+                              <ItemNameDisplay
+                                name={row.item.name}
+                                tags={row.item.tags}
+                              />
                               {row.item.uncertain && (
                                 <span className="inline-flex items-center gap-1 text-[11px] text-amber-300 font-medium">
                                   <AlertTriangle className="w-3 h-3" />
@@ -918,12 +919,7 @@ function FragmentGroupRow({
             />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="font-medium text-slate-100">{group.name}</span>
-                {group.tags.length > 0 && (
-                  <span className="font-mono text-[11px] text-amber-400/90">
-                    {group.tags.join(' · ')}
-                  </span>
-                )}
+                <ItemNameDisplay name={group.name} tags={group.tags} />
                 {group.hasUncertain && (
                   <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
                     <AlertTriangle className="w-3 h-3" />
@@ -1022,8 +1018,8 @@ function FragmentGroupRow({
                             </div>
                           )}
                           {row.item.name !== group.name && (
-                            <div className="text-[11px] font-mono text-amber-300/90 mt-0.5">
-                              {row.item.name}
+                            <div className="text-[11px] mt-0.5">
+                              <ItemNameDisplay name={row.item.name} />
                             </div>
                           )}
                           {isEditing && (
@@ -1067,6 +1063,8 @@ function FragmentGroupRow({
                                   <option value="B">Grado B</option>
                                   <option value="A">Grado A</option>
                                   <option value="S">Grado S</option>
+                                  <option value="S80">Grado S80</option>
+                                  <option value="S84">Grado S84</option>
                                   <option value="No-Grade">No-Grade</option>
                                 </select>
                                 <select

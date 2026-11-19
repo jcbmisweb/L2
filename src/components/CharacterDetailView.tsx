@@ -33,6 +33,7 @@ import {
 } from '../utils/storage';
 import {EquipmentPaperdoll} from './EquipmentPaperdoll';
 import {ItemIcon} from './ItemIcon';
+import {ItemNameDisplay} from './ItemNameDisplay';
 
 interface CharacterDetailViewProps {
   character: CharacterRecord;
@@ -1453,6 +1454,8 @@ export function CharacterDetailView({
                     <option value="B">Categoría B</option>
                     <option value="A">Categoría A</option>
                     <option value="S">Categoría S</option>
+                    <option value="S80">Categoría S80</option>
+                    <option value="S84">Categoría S84</option>
                     <option value="No-Grade">No-Grade</option>
                   </select>
                   <select
@@ -1547,6 +1550,8 @@ export function CharacterDetailView({
                                   <option value="B">Grado B</option>
                                   <option value="A">Grado A</option>
                                   <option value="S">Grado S</option>
+                                  <option value="S80">Grado S80</option>
+                                  <option value="S84">Grado S84</option>
                                   <option value="No-Grade">No-Grade</option>
                                 </select>
                                 <select
@@ -1595,14 +1600,10 @@ export function CharacterDetailView({
                                 onClick={() => onQuickEditIcon(item.name)}
                               />
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                                <span className="font-medium text-slate-100">
-                                  {item.name}
-                                </span>
-                                {item.tags.length > 0 && (
-                                  <span className="font-mono text-[11px] text-amber-400/90">
-                                    {item.tags.join(' · ')}
-                                  </span>
-                                )}
+                                <ItemNameDisplay
+                                  name={item.name}
+                                  tags={item.tags}
+                                />
                                 {item.uncertain && (
                                   <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
                                     <AlertTriangle className="w-3 h-3" />

@@ -13,6 +13,7 @@ import {
 import {useMemo, useState} from 'react';
 import {EquipmentSlot, ItemCatalogEntry, ItemEntry} from '../types/l2';
 import {ItemIcon} from './ItemIcon';
+import {ItemNameDisplay} from './ItemNameDisplay';
 
 interface EquipmentPaperdollProps {
   equippedItems: ItemEntry[];
@@ -280,13 +281,11 @@ export function EquipmentPaperdoll({
           </div>
 
           {activeSlotItem ? (
-            <div className="text-slate-100 font-medium">
-              {activeSlotItem.name}
-              {activeSlotItem.tags.length > 0 && (
-                <span className="ml-2 font-mono text-[11px] text-amber-400/90">
-                  {activeSlotItem.tags.join(' · ')}
-                </span>
-              )}
+            <div>
+              <ItemNameDisplay
+                name={activeSlotItem.name}
+                tags={activeSlotItem.tags}
+              />
             </div>
           ) : (
             <div className="text-slate-500">Casilla sin objeto asignado.</div>

@@ -3,6 +3,7 @@ import {AccountDetailView} from './components/AccountDetailView';
 import {AccountsDashboardView} from './components/AccountsDashboardView';
 import {AccountsDirectoryView} from './components/AccountsDirectoryView';
 import {AiBridgeView} from './components/AiBridgeView';
+import {ArmorSetsView} from './components/ArmorSetsView';
 import {BackupModal} from './components/BackupModal';
 import {CharacterDetailView} from './components/CharacterDetailView';
 import {ClanDetailView} from './components/ClanDetailView';
@@ -34,6 +35,7 @@ export default function App() {
     bulkUpsertCatalog,
     deleteItemGlobally,
     setIconBaseUrl,
+    setArmorSetImage,
     upsertAccount,
     bulkUpsertAccounts,
     applyPartialItemsImport,
@@ -110,6 +112,9 @@ export default function App() {
     }
     if (activeView === 'professions') {
       return [serverLabel, 'Profesiones y familias'];
+    }
+    if (activeView === 'armors') {
+      return [serverLabel, 'Colección de Armaduras (Sets)'];
     }
     if (activeView === 'downloads') {
       return [serverLabel, 'Descargar y subir datos'];
@@ -199,6 +204,7 @@ export default function App() {
           setActiveView('accounts');
         }}
         onNavigateProfessions={() => setActiveView('professions')}
+        onNavigateArmors={() => setActiveView('armors')}
         onNavigateDownloads={() => setActiveView('downloads')}
         onSelectCharacter={handleOpenCharacter}
         onSelectClan={handleOpenClan}
@@ -243,6 +249,14 @@ export default function App() {
               characters={db.characters}
               selectedServer={selectedServer}
               onSelectCharacter={handleOpenCharacter}
+            />
+          ) : activeView === 'armors' ? (
+            <ArmorSetsView
+              db={db}
+              selectedServer={selectedServer}
+              onSelectCharacter={handleOpenCharacter}
+              onSelectClan={handleOpenClan}
+              onSetArmorImage={setArmorSetImage}
             />
           ) : activeView === 'downloads' ? (
             <DownloadsView

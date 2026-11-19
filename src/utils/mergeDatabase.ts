@@ -416,6 +416,18 @@ export function mergeDatabasesByTimestamp(
         incoming.iconBaseUrl?.trim() ||
         DEFAULT_ICON_BASE_URL;
 
+  const mergedArmorImages: Record<string, string> = {};
+  Object.entries(prev.armorSetImages || {}).forEach(([k, v]) => {
+    if (typeof v === 'string' && v.trim()) mergedArmorImages[k] = v.trim();
+  });
+  Object.entries(incoming.armorSetImages || {}).forEach(([k, v]) => {
+    if (typeof v === 'string' && v.trim()) {
+      if (!mergedArmorImages[k] || incomingDbTs >= prevDbTs) {
+        mergedArmorImages[k] = v.trim();
+      }
+    }
+  });
+
   return {
     version: 1,
     characters: Array.from(charMap.values()),
@@ -423,6 +435,8 @@ export function mergeDatabasesByTimestamp(
     accounts: Array.from(accMap.values()),
     iconBaseUrl,
     itemCatalog: mergedCatalog,
+    armorSetImages:
+      Object.keys(mergedArmorImages).length > 0 ? mergedArmorImages : undefined,
     updatedAt: new Date(Math.max(prevDbTs, incomingDbTs, Date.now())).toISOString(),
   };
 }

@@ -10,6 +10,7 @@ import {
   resolveItemNameWithGrade,
   stripItemEnchantPrefix,
 } from '../utils/storage';
+import {ItemNameDisplay} from './ItemNameDisplay';
 
 interface QuickIconModalProps {
   itemName: string | null;
@@ -124,8 +125,8 @@ export function QuickIconModal({
             )}
 
             <div className="min-w-0">
-              <div className="font-medium text-sm text-slate-100 truncate">
-                {baseItemName}
+              <div className="text-sm">
+                <ItemNameDisplay name={baseItemName} />
               </div>
               <div className="font-mono text-[11px] text-slate-400 truncate mt-0.5">
                 {previewUrl || 'Sin imagen asignada'}

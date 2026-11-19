@@ -7,6 +7,7 @@ import {
   Mail,
   Search,
   Shield,
+  Shirt,
   Sparkles,
   User,
   Users,
@@ -30,6 +31,7 @@ interface SidebarProps {
   onNavigateCatalog: () => void;
   onNavigateAccounts: () => void;
   onNavigateProfessions: () => void;
+  onNavigateArmors: () => void;
   onNavigateDownloads: () => void;
   onSelectCharacter: (id: string) => void;
   onSelectClan: (id: string) => void;
@@ -54,6 +56,7 @@ export function Sidebar({
   onNavigateCatalog,
   onNavigateAccounts,
   onNavigateProfessions,
+  onNavigateArmors,
   onNavigateDownloads,
   onSelectCharacter,
   onSelectClan,
@@ -271,6 +274,22 @@ export function Sidebar({
               (c) => selectedServer === 'all' || c.server === selectedServer
             ).length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            onNavigateArmors();
+            onCloseMobile();
+          }}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-amber-500 ${
+            activeView === 'armors'
+              ? 'bg-amber-500/15 text-amber-400'
+              : 'text-slate-300 hover:bg-[#161F30] hover:text-slate-100'
+          }`}
+        >
+          <Shirt className="w-4 h-4 shrink-0" />
+          <span>Armaduras (Sets)</span>
         </button>
 
         <button

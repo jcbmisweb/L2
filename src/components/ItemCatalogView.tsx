@@ -25,6 +25,7 @@ import {
   stripItemEnchantPrefix,
 } from '../utils/storage';
 import {ItemIcon} from './ItemIcon';
+import {ItemNameDisplay} from './ItemNameDisplay';
 
 interface ItemCatalogViewProps {
   db: L2Database;
@@ -505,7 +506,9 @@ export function ItemCatalogView({
               }
               className="bg-[#0B0F17] border border-[#1E293B] rounded-md px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
             >
-              <option value="all">Categorías (D-S)</option>
+              <option value="all">Categorías (D-S84)</option>
+              <option value="S84">Categoría S84</option>
+              <option value="S80">Categoría S80</option>
               <option value="S">Categoría S</option>
               <option value="A">Categoría A</option>
               <option value="B">Categoría B</option>
@@ -604,8 +607,8 @@ export function ItemCatalogView({
                         />
                       </td>
 
-                      <td className="py-2 px-3 font-medium text-slate-100">
-                        {row.name}
+                      <td className="py-2 px-3">
+                        <ItemNameDisplay name={row.name} />
                       </td>
 
                       <td className="py-2 px-3 text-slate-300 min-w-[230px]">
