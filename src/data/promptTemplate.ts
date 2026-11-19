@@ -9,6 +9,7 @@ REGLAS
 6. Las etiquetas pequeñas junto al nombre (por ejemplo [S], [C], [S80], "L2ES", "Event", "Heavy Armor", "Light Armor", "Robe") van en el array "tags" del objeto. EXCEPCIÓN IMPORTANTE para distinguir piezas y categorías correctamente:
    - Si una armadura o ropa lleva demarcación de tipo (Heavy Armor, Light Armor o Robe), inclúyela en "name" entre paréntesis además de en "tags" (ejemplos: "Blue Wolf Gloves (Heavy Armor) (B-Grade)", "Blue Wolf Gloves (Light Armor) (B-Grade)", "Avadon Boots (Robe) (B-Grade)").
    - Para TODAS las armas, armaduras, escudos, joyas, pergaminos (Blessed Scroll / Scroll: Enchant Armor/Weapon, Scroll: Recovery), Crystal, Soulshot/Spiritshot y Elixir que tengan grado [D], [C], [B], [A], [S] (o [S80]/[S84] que pertenecen a S-Grade), incluye SIEMPRE su categoría de grado en "name" además de en "tags" (ejemplos: "Sword of Valhalla (B-Grade)", "Sealed Moirai Boots (S-Grade)", "Blessed Scroll: Enchant Armor (A-Grade)", "Crystal (C-Grade)").
+   - Si un arma o armadura es "Common Item", mantenlo delante del nombre (ejemplo: "Common Item - Blue Wolf Gloves (Heavy Armor) (B-Grade)").
    - Para Soul Crystals (Red/Blue/Green Soul Crystal) con nivel/etapa junto al nombre (ej. [10], [12], [14]), incluye el nivel en "name" además de en "tags" (ejemplo: "Red Soul Crystal - Stage 12").
 7. Si una tabla pone "No hay datos disponibles en la tabla", devuelve ese array vacío [].
 8. Si te paso varias capturas del mismo personaje, únelas en un solo JSON y elimina las filas repetidas que se solapen entre capturas.

@@ -323,11 +323,31 @@ export function updateItemNameAndTags(
   };
 }
 
+function hasCommonItemTag(tags: string[]): boolean {
+  return tags.some((t) => /^common(?:\s+item)?$/i.test(t.trim()));
+}
+
+function formatCommonItemPrefix(name: string, addCommonFromTag: boolean): string {
+  const enchantMatch = name.match(/^(\+\s*\d+\s+)(.+)$/);
+  const enchantPrefix = enchantMatch ? enchantMatch[1].replace(/\s+/g, '') + ' ' : '';
+  const body = enchantMatch ? enchantMatch[2].trim() : name;
+
+  const commonMatch = body.match(/^common\s+item(?:\s*[-–:]\s*|\s+)(.+)$/i);
+  if (commonMatch && commonMatch[1].trim()) {
+    return `${enchantPrefix}Common Item - ${commonMatch[1].trim()}`;
+  }
+  if (addCommonFromTag) {
+    return `${enchantPrefix}Common Item - ${body}`;
+  }
+  return name;
+}
+
 /**
  * Ensures items preserve and standardize:
  * - Soul Crystal stage (`- Stage 1..18`) or grade
  * - Armor type demarcation (`(Heavy Armor)`, `(Light Armor)`, `(Robe)`)
  * - Equipment/Scroll/Crystal/Shot/Elixir grade (`(D-Grade)`, `(C-Grade)`, `(B-Grade)`, `(A-Grade)`, `(S-Grade)`, `(No-Grade)`)
+ * - Common Item prefix (`Common Item - ...`)
  */
 export function resolveItemNameWithGrade(
   name: string,
@@ -376,7 +396,7 @@ export function resolveItemNameWithGrade(
   const resolvedArmorType = armorType || extractArmorTypeFromTags(cleanTags);
   const resolvedGrade = grade || extractGradeFromTags(cleanTags);
 
-  let out = base || trimmed;
+  let out = formatCommonItemPrefix(base || trimmed, hasCommonItemTag(cleanTags));
   if (resolvedArmorType && !hasArmorTypeInBase(out, resolvedArmorType)) {
     out = `${out} (${resolvedArmorType})`;
   }
@@ -387,10 +407,10 @@ export function resolveItemNameWithGrade(
 }
 
 /**
- * Removes Lineage 2 enchant prefixes ("+1 ", "+3 ", "+16 ") and condition
- * prefixes ("Augmented ") from an item name so variants like
- * "+1 Dynasty Stockings", "Augmented Angel Slayer", or "+4 Augmented Angel Slayer"
- * resolve to their single base item name ("Dynasty Stockings", "Angel Slayer").
+ * Removes Lineage 2 enchant prefixes ("+1 ", "+3 ", "+16 "), condition prefixes
+ * ("Augmented "), and "Common Item - " prefixes from an item name so variants like
+ * "+1 Dynasty Stockings", "Augmented Angel Slayer", or "Common Item - Blue Wolf Gloves"
+ * resolve to their single base item name.
  */
 export function stripItemEnchantPrefix(name: string): string {
   const trimmed = name.trim().replace(/\s+/g, ' ');
@@ -400,6 +420,7 @@ export function stripItemEnchantPrefix(name: string): string {
     const next = current
       .replace(/^\+\s*\d+\s+/, '')
       .replace(/^augmented\s+/i, '')
+      .replace(/^common\s+item(?:\s*[-–:]\s*|\s+)/i, '')
       .trim();
     if (!next || next === current) break;
     current = next;
